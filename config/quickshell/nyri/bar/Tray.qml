@@ -68,36 +68,13 @@ Island {
         Component.onCompleted: Qt.callLater(() => chip.born = true)
         SpringValue { id: pop; target: chip.born ? 1 : 0; damping: 0.55; stiffness: 420 }
 
-        Item {
+        TrayGlyph {
             anchors.verticalCenter: parent.verticalCenter
-            width: 28
-            height: 28
+            implicitSize: 18
+            source: chip.item.icon
             scale: Math.max(0, pop.value)
             rotation: (1 - pop.value) * -120
             opacity: Math.min(1, Math.max(0, pop.value))
-
-            RectangularShadow {
-                anchors.fill: plate
-                radius: plate.radius
-                blur: 6
-                offset.y: 1
-                color: Qt.alpha(Colors.m3shadow, 0.25)
-                visible: plate.visible
-            }
-
-            Rectangle {
-                id: plate
-                anchors.fill: parent
-                radius: 14
-                visible: Colors.mode === "light"
-                color: Colors.m3inverseSurface
-            }
-
-            IconImage {
-                anchors.centerIn: parent
-                implicitSize: 18
-                source: chip.item.icon
-            }
         }
 
         onClicked: mouse => {

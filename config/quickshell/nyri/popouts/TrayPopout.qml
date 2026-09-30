@@ -67,7 +67,7 @@ Surface {
                             z: -1
                         }
 
-                        IconImage {
+                        TrayGlyph {
                             anchors.centerIn: parent
                             implicitSize: 24
                             source: cell.modelData.icon
