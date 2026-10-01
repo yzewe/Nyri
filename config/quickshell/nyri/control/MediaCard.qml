@@ -44,6 +44,7 @@ Rectangle {
             fillMode: Image.PreserveAspectCrop
             smooth: true
             mipmap: true
+            sourceSize: Qt.size(512, 512)
             asynchronous: true
             opacity: status === Image.Ready ? 1 : 0
             Behavior on opacity { EffectAnim {} }

@@ -43,13 +43,12 @@ Column {
         }
     }
     MText {
+        visible: !Compositor.isHyprland
         width: parent.width
         wrapMode: Text.Wrap
         textStyle: Type.bodyMedium
         color: Colors.m3onSurfaceVariant
-        text: Compositor.isHyprland
-            ? "Штатная раскладка Hyprland: окна автоматически заполняют экран. Изменения применяются сразу и сохраняются только на этом компьютере."
-            : "В niri действует его прокручиваемая раскладка. Для обычного тайлинга без горизонтальной прокрутки запусти Nyri в сеансе Hyprland."
+        text: "Эти настройки работают в Hyprland"
     }
     ListGroup {
         visible: Compositor.isHyprland && page.values

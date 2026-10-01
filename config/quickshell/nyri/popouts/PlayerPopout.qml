@@ -353,6 +353,7 @@ Surface {
             fillMode: Image.PreserveAspectCrop
             smooth: true
             mipmap: true
+            sourceSize: Qt.size(512, 512)
             asynchronous: true
         }
         MaterialShape {

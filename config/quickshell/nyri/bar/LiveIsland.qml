@@ -99,6 +99,7 @@ Island {
                 fillMode: Image.PreserveAspectCrop
                 smooth: true
                 mipmap: true
+                sourceSize: Qt.size(128, 128)
                 asynchronous: true
                 layer.enabled: true
                 layer.smooth: true

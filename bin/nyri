@@ -10,7 +10,6 @@ hypr() { [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; }
 
 qspid() {
     local p
-    # Nix and other launchers can give Quickshell a process name other than `qs`.
     for p in $(qs -c nyri list -j 2>/dev/null | jq -r '.[].pid'); do
         if grep -qz '^NYRI_NESTED=1$' "/proc/$p/environ" 2>/dev/null; then
             [[ -n ${NYRI_NESTED:-} ]] && { echo "$p"; return; }

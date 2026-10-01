@@ -11,7 +11,6 @@ if [[ ${1:-} == --undo ]]; then
     "$NYRI/bin/nyri-hypr" uninstall || true
     "$NYRI/bin/nyri-link" uninstall
     undo_greeter
-    systemctl --user enable inir.service 2>/dev/null && echo "iNiR will start again at login"
     bold "Done. Log out and back in."
     exit 0
 fi
@@ -204,9 +203,6 @@ bold "Linking configs (replaced files go to ~/.config-nyri-backup/)"
 if [[ $mode == hyprland ]]; then
     bold "Adding Nyri to Hyprland without changing personal shortcuts"
     "$NYRI/bin/nyri-hypr" install
-else
-    bold "Stopping iNiR from starting with niri"
-    systemctl --user disable inir.service 2>/dev/null && echo "  inir.service disabled" || echo "  inir.service was not enabled"
 fi
 
 if install_greeter; then

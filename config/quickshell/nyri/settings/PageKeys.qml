@@ -334,13 +334,6 @@ Column {
     }
     Component.onCompleted: { load.running = true; Qt.callLater(mountSheet); }
 
-    MText {
-        width: parent.width
-        wrapMode: Text.Wrap
-        textStyle: Type.bodyMedium
-        color: Colors.m3onSurfaceVariant
-        text: "Приложение запускается по своему значку. Своя команда — это любое, что можно набрать в терминале. Новые сочетания остаются только на этом компьютере, занятая клавиша не заменяется."
-    }
     SearchField {
         id: search
         width: parent.width

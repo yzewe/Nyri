@@ -80,7 +80,7 @@ Rectangle {
                     anchors.fill: parent
                     radius: Shape.medium
                     visible: (root.a?.cover ?? "") !== "" && img.status === Image.Ready
-                    Image { id: img; anchors.fill: parent; source: root.a?.cover || (root.a?.kind === "media" ? Media.art : ""); fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true; asynchronous: true }
+                    Image { id: img; anchors.fill: parent; source: root.a?.cover || (root.a?.kind === "media" ? Media.art : ""); fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true; asynchronous: true; sourceSize: Qt.size(176, 176) }
                 }
             }
 

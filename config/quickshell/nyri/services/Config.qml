@@ -17,11 +17,21 @@ Singleton {
     readonly property alias o: adapter
 
     FileView {
+        id: file
         path: Paths.state + "/settings.json"
         watchChanges: true
         onFileChanged: reload()
         onAdapterUpdated: writeAdapter()
         onLoadFailed: error => { if (error === FileViewError.FileNotFound) writeAdapter() }
+        onLoaded: {
+            let idle = {};
+            if (idle.screenOff !== undefined && idle.screenAc === undefined) {
+                adapter.idle.screenAc = idle.screenOff;
+                adapter.idle.screenBattery = idle.screenOff;
+            }
+            if (idle.lockAc !== undefined && idle.lock === undefined)
+                adapter.idle.lock = Math.min(idle.lockAc, idle.lockBattery ?? idle.lockAc);
+        }
 
         JsonAdapter {
             id: adapter

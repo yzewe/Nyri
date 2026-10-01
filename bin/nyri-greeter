@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Open the Nyri login screen. --preview draws it in the current session and does not log in.
 set -euo pipefail
 here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 if [[ ${1:-} == --preview ]]; then
