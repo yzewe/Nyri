@@ -24,12 +24,18 @@ Variants {
 
         readonly property bool autohide: Config.o.bar.autohide
         readonly property bool emptyDesk: {
-            const ws = Niri.workspaces.find(w => w.output === modelData.name && w.is_active);
-            return !ws || Niri.windowCount(ws.id) === 0;
+            const ws = Compositor.workspaces.find(w => w.output === modelData.name && w.is_active);
+            return !ws || Compositor.windowCount(ws.id) === 0;
         }
         property bool pointerIn: false
-        readonly property bool revealed: !autohide || pointerIn || Panels.current !== ""
-                                         || Niri.overviewOpen || emptyDesk
+        property bool menuHeld: false
+        readonly property bool revealed: !autohide || pointerIn || menuHeld || Panels.current !== ""
+                                         || Compositor.overviewOpen || emptyDesk
+        function holdMenu() { menuHeld = true; leave.stop(); pointerIn = true; }
+        function releaseMenu() {
+            menuHeld = false;
+            if (!barHover.hovered) { leave.stop(); pointerIn = false; }
+        }
 
         SpringValue {
             id: reveal
@@ -56,16 +62,18 @@ Variants {
         WlrLayershell.layer: autohide ? WlrLayer.Overlay : WlrLayer.Top
 
         mask: Region {
-            Region { item: bar.autohide ? null : left }
-            Region { item: bar.autohide ? null : center }
-            Region { item: bar.autohide ? null : right }
-            Region { item: bar.autohide ? (reveal.value > 0.5 ? strip : edge) : null }
+            Region { item: Panels.current !== "" ? null : bar.autohide ? null : left }
+            Region { item: Panels.current !== "" ? null : bar.autohide ? null : fixedClock }
+            Region { item: Panels.current !== "" ? null : bar.autohide ? null : center }
+            Region { item: Panels.current !== "" ? null : bar.autohide ? null : right }
+            Region { item: Panels.current !== "" ? null : bar.autohide ? (reveal.value > 0.5 ? strip : edge) : null }
         }
 
         Item { id: strip; width: bar.width; height: bar.stripHeight + 4; y: bar.bottom ? bar.height - height : 0 }
         Item { id: edge; width: bar.width; height: 3; y: bar.bottom ? bar.height - height : 0 }
 
         HoverHandler {
+            id: barHover
             onHoveredChanged: {
                 if (hovered) {
                     leave.stop();
@@ -92,9 +100,9 @@ Variants {
             Rectangle { y: bar.bottom ? 0 : parent.height - 1; width: parent.width; height: 1; color: Colors.m3outlineVariant; opacity: 0.6 }
         }
 
-        readonly property var leftIds: Array.isArray(Config.o.bar.left) ? Config.o.bar.left : ["launcher", "workspaces", "title"]
-        readonly property var centerIds: Array.isArray(Config.o.bar.center) ? Config.o.bar.center : ["clock", "live"]
-        readonly property var rightIds: Array.isArray(Config.o.bar.right) ? Config.o.bar.right : ["tray", "status", "control"]
+        readonly property var leftIds: Config.list(Config.o.bar.left).filter(id => id !== "clock")
+        readonly property var centerIds: Config.list(Config.o.bar.center).filter(id => id !== "clock")
+        readonly property var rightIds: Config.list(Config.o.bar.right).filter(id => id !== "clock")
 
         readonly property var registry: ({
             launcher: launcherC, workspaces: workspacesC, title: titleC, clock: clockC, live: liveC,
@@ -104,7 +112,7 @@ Variants {
             if (id === "tray") return ST.SystemTray.items.values.length > 0;
             if (id === "weather") return Weather.ready;
             if (id === "media") return Media.player !== null;
-            if (id === "title") return Niri.focusedWindow !== null;
+            if (id === "title") return Compositor.focusedWindow !== null;
             return true;
         }
         Component { id: launcherC; LauncherButton {} }
@@ -163,12 +171,19 @@ Variants {
                 y: bar.islandY
                 ids: bar.leftIds
                 base: 0
-                room: (center.width > 1 ? center.x : (bar.width + x) / 2) - 12 - x
+                room: fixedClock.x - 12 - x
+            }
+
+            Loader {
+                id: fixedClock
+                x: (bar.width - width) / 2
+                y: bar.islandY
+                sourceComponent: clockC
             }
 
             Section {
                 id: center
-                x: (bar.width - width) / 2
+                x: fixedClock.x + fixedClock.width + 8
                 y: bar.islandY
                 ids: bar.centerIds
                 base: bar.leftIds.length
@@ -179,7 +194,7 @@ Variants {
                 x: bar.width - width - bar.gap
                 y: bar.islandY
                 ids: bar.rightIds
-                room: bar.width - bar.gap - (center.width > 1 ? center.x + center.width : bar.width / 2) - 12
+                room: bar.width - bar.gap - (center.width > 1 ? center.x + center.width : fixedClock.x + fixedClock.width) - 12
                 base: bar.leftIds.length + bar.centerIds.length
             }
         }

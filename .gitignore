@@ -1,5 +1,6 @@
 # Rendered by bin/nyri-theme from the current wallpaper.
 config/niri/colors.kdl
+config/niri/binds.kdl
 config/fuzzel/colors.ini
 # Written by the shell at runtime (services/Privacy.qml).
 config/niri/live.kdl

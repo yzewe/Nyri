@@ -9,7 +9,7 @@ Text {
     font.pixelSize: textStyle.size
     font.variableAxes: ({ "wght": textStyle.weight, "ROND": textStyle.rond })
     verticalAlignment: Text.AlignVCenter
-    renderType: font.pixelSize >= 32 ? Text.CurveRendering : Text.NativeRendering
+    renderType: Text.QtRendering
     font.hintingPreference: Font.PreferNoHinting
 
     Behavior on color { ColorAnim {} }

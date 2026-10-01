@@ -48,10 +48,11 @@ Column {
         width: parent.width
         title: "Когда не пользуешься"
 
-        MinuteRow { icon: "monitor"; title: "Гасить экран"; key: "screenOff"; max: 30 }
-        MinuteRow { icon: "lock_clock"; title: "Блокировать от сети"; key: "lockAc" }
-        MinuteRow { icon: "battery_4_bar"; title: "Блокировать от батареи"; key: "lockBattery" }
-        MinuteRow { icon: "bedtime"; title: "Засыпать от батареи"; key: "suspendBattery" }
+        MinuteRow { icon: "monitor"; title: "Гасить экран от сети"; key: "screenAc"; max: 30 }
+        MinuteRow { icon: "battery_4_bar"; title: "Гасить экран от батареи"; key: "screenBattery"; max: 30 }
+        MinuteRow { icon: "lock_clock"; title: "Блокировать"; key: "lock" }
+        MinuteRow { icon: "bedtime"; title: "Засыпать от сети"; key: "suspendAc" }
+        MinuteRow { icon: "battery_saver"; title: "Засыпать от батареи"; key: "suspendBattery" }
 
         SettingRow {
             icon: "login"

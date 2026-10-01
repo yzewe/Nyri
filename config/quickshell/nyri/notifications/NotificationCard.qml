@@ -1,6 +1,6 @@
 import QtQuick
+import QtQuick.Window
 import Quickshell
-import Quickshell.Widgets
 import Quickshell.Services.Notifications
 import qs.theme
 import qs.services
@@ -13,23 +13,45 @@ Card {
     property bool popup: false
     readonly property bool masked: popup && Privacy.active
     readonly property bool critical: notif?.urgency === NotificationUrgency.Critical
+    readonly property bool fromNiri: /\bniri\b/.test(((notif?.appName || "") + " " + (notif?.desktopEntry || "")).toLowerCase())
     readonly property string iconSource: {
         const n = notif;
-        if (!n) return "";
+        if (!n || fromNiri) return "";
         const icon = n.appIcon || DesktopEntries.byId(n.desktopEntry)?.icon || "";
-        if (icon.startsWith("/") || icon.startsWith("file:"))
-            return icon;
-        return icon ? Quickshell.iconPath(icon, "dialog-information") : "";
+        return Apps.fileForIcon(icon) || Apps.iconSourceFor(n.desktopEntry || "", "");
+    }
+    readonly property string picture: fromNiri || masked ? "" : String(notif?.image ?? "")
+    readonly property string glyph: {
+        if (fromNiri) return "view_column";
+        const blob = ((notif?.appName || "") + " " + (notif?.summary || "") + " " + (notif?.appIcon || "")).toLowerCase();
+        if (/запис|record|video|screen.?cast/.test(blob)) return "videocam";
+        if (/скрин|screenshot|снимок/.test(blob)) return "screenshot_monitor";
+        if (/пипет|color.?pick|eyedrop/.test(blob)) return "colorize";
+        return "notifications";
+    }
+
+    signal closeRequested
+    property bool animateClose: false
+
+    function readable(s) {
+        if (!s || s.indexOf("&") < 0 || s.indexOf("<") >= 0) return s || "";
+        return s.replace(/&quot;|&#34;|&#x22;/gi, "\"")
+            .replace(/&apos;|&#39;|&#x27;/gi, "'")
+            .replace(/&lt;/gi, "<")
+            .replace(/&gt;/gi, ">")
+            .replace(/&amp;/gi, "&");
     }
 
     implicitHeight: body.implicitHeight + 28
     radius: Shape.largeIncreased
     color: critical ? Colors.m3errorContainer : popup ? Colors.m3surfaceContainerHigh : Colors.m3surfaceContainerHighest
-    elevation: popup ? 3 : 0
+    elevation: 0
 
     MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
         cursorShape: Qt.PointingHandCursor
+        onWheel: event => event.accepted = false
         onClicked: {
             const def = root.notif?.actions.find(a => a.identifier === "default");
             if (def) Notifs.invoke(root.notif, def);
@@ -43,59 +65,79 @@ Card {
         width: parent.width - 32
         spacing: 10
 
-        Row {
+        Item {
+            id: head
             width: parent.width
-            spacing: 12
+            height: Math.max(48, textCol.implicitHeight)
 
             Item {
-                width: 40
-                height: 40
-
-                ClippingRectangle {
-                    anchors.fill: parent
-                    radius: 20
-                    color: Colors.m3secondaryContainer
-                    visible: !!root.notif?.image && !root.masked
-
-                    Image {
-                        anchors.fill: parent
-                        source: root.notif?.image ?? ""
-                        fillMode: Image.PreserveAspectCrop
-                        sourceSize: Qt.size(80, 80)
-                        asynchronous: true
-                    }
-                }
+                id: iconBox
+                width: 48
+                height: 48
+                anchors.left: parent.left
+                anchors.top: parent.top
+                clip: true
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: 20
-                    color: Colors.m3secondaryContainer
-                    visible: !root.notif?.image || root.masked
+                    radius: 12
+                    color: root.critical ? Colors.m3error : Colors.m3secondaryContainer
+                    visible: root.masked || shot.status !== Image.Ready
+                }
 
-                    IconImage {
-                        anchors.centerIn: parent
-                        implicitSize: 24
-                        source: root.iconSource
-                        visible: root.iconSource !== ""
-                    }
+                Image {
+                    id: shot
+                    anchors.fill: parent
+                    visible: !root.masked && status === Image.Ready
+                    source: root.picture
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: false
+                    smooth: true
+                    mipmap: false
+                }
 
-                    MIcon {
-                        anchors.centerIn: parent
-                        visible: root.iconSource === ""
-                        icon: "notifications"
-                        fill: 1
-                        color: Colors.m3onSecondaryContainer
-                    }
+                Image {
+                    id: appIcon
+                    anchors.fill: parent
+                    visible: !root.masked && root.picture === "" && status === Image.Ready
+                    source: root.picture === "" ? root.iconSource : ""
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: false
+                    smooth: true
+                    mipmap: false
+                    sourceSize.width: Math.round(iconBox.width * Screen.devicePixelRatio)
+                    sourceSize.height: Math.round(iconBox.height * Screen.devicePixelRatio)
+                }
+
+                MIcon {
+                    anchors.centerIn: parent
+                    visible: root.masked || (root.picture === "" && appIcon.status !== Image.Ready)
+                    icon: root.masked ? "visibility_off" : root.glyph
+                    size: 22
+                    fill: 1
+                    color: root.critical ? Colors.m3onError : Colors.m3onSecondaryContainer
                 }
             }
 
             Column {
-                width: parent.width - 40 - 12 - 36
+                id: textCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.leftMargin: 60
+                anchors.rightMargin: 40
                 spacing: 2
 
                 MText {
                     width: parent.width
                     elide: Text.ElideRight
+                    verticalAlignment: Text.AlignTop
+                    font.family: "Liberation Sans"
+                    font.kerning: true
+                    renderType: Text.NativeRendering
+                    font.hintingPreference: Font.PreferDefaultHinting
+                    font.variableAxes: ({})
+                    font.weight: Font.Normal
                     textStyle: Type.labelMedium
                     color: root.critical ? Colors.m3onErrorContainer : Colors.m3onSurfaceVariant
                     text: [root.notif?.appName, Notifs.ago(root.notif?.id)].filter(Boolean).join(" · ")
@@ -103,11 +145,17 @@ Card {
 
                 MText {
                     width: parent.width
-                    wrapMode: Text.Wrap
+                    wrapMode: Text.WordWrap
                     maximumLineCount: 2
                     elide: Text.ElideRight
+                    verticalAlignment: Text.AlignTop
+                    font.family: "Liberation Sans"
+                    font.kerning: true
+                    renderType: Text.NativeRendering
+                    font.hintingPreference: Font.PreferDefaultHinting
+                    font.variableAxes: ({})
+                    font.weight: Font.Bold
                     textStyle: Type.titleSmall
-                    font.variableAxes: ({ "wght": 600 })
                     color: root.critical ? Colors.m3onErrorContainer : Colors.m3onSurface
                     text: root.masked ? "Новое уведомление" : root.notif?.summary ?? ""
                 }
@@ -115,23 +163,32 @@ Card {
                 MText {
                     width: parent.width
                     visible: text !== ""
-                    wrapMode: Text.Wrap
+                    wrapMode: Text.WordWrap
                     maximumLineCount: root.popup ? 4 : 6
                     elide: Text.ElideRight
-                    textFormat: Text.StyledText
+                    verticalAlignment: Text.AlignTop
+                    font.family: "Liberation Sans"
+                    font.kerning: true
+                    renderType: Text.NativeRendering
+                    font.hintingPreference: Font.PreferDefaultHinting
+                    font.variableAxes: ({})
+                    font.weight: Font.Normal
+                    textFormat: (root.notif?.body ?? "").indexOf("<") >= 0 ? Text.StyledText : Text.PlainText
                     textStyle: Type.bodyMedium
                     color: root.critical ? Colors.m3onErrorContainer : Colors.m3onSurfaceVariant
                     linkColor: Colors.m3primary
                     onLinkActivated: link => Qt.openUrlExternally(link)
-                    text: root.masked ? "" : root.notif?.body ?? ""
+                    text: root.masked ? "" : root.readable(root.notif?.body ?? "")
                 }
             }
 
             IconButton {
+                anchors.right: parent.right
+                anchors.top: parent.top
                 size: 32
                 iconSize: 18
                 icon: "close"
-                onClicked: root.notif?.dismiss()
+                onClicked: root.animateClose ? root.closeRequested() : root.notif?.dismiss()
             }
         }
 
@@ -159,6 +216,12 @@ Card {
                     MText {
                         id: label
                         anchors.centerIn: parent
+                        font.family: "Liberation Sans"
+                        font.kerning: true
+                        renderType: Text.NativeRendering
+                        font.hintingPreference: Font.PreferDefaultHinting
+                        font.variableAxes: ({})
+                        font.weight: Font.Bold
                         textStyle: Type.labelLarge
                         color: Colors.m3onSecondaryContainer
                         text: chip.modelData.text

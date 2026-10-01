@@ -32,13 +32,15 @@ Item {
 
     SequentialAnimation {
         id: introAnim
-        running: true
         PauseAnimation { duration: 120 + root.introIndex * 70 }
         SpatialAnim { target: root; property: "intro"; from: 0; to: 1; speed: "slow" }
     }
+    function playIntro() { intro = 0; introAnim.restart(); }
+    function holdIntro() { introAnim.stop(); intro = 0; }
+    Component.onCompleted: if (!Lock.locked) playIntro()
     Connections {
         target: Lock
-        function onUnlocked() { root.intro = 0; introAnim.restart(); }
+        function onLockedChanged() { if (Lock.locked) root.holdIntro(); else root.playIntro(); }
     }
 
     readonly property string barStyle: Config.o.bar.style

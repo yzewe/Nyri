@@ -1,0 +1,400 @@
+#!/usr/bin/env python3
+"""Read and edit personal Hyprland shortcuts without replacing occupied ones."""
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+CONF = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "hypr/hyprland.conf"
+MAIN = CONF if CONF.exists() else CONF.with_suffix(".lua")
+SOURCE = re.compile(r'^\s*source\s*=\s*(.+?)\s*(?:#.*)?$')
+BIND = re.compile(r'^(\s*bind[a-z]*\s*=\s*)([^,]*),\s*([^,]*),\s*([^,]*)(,.*)?$')
+LUA_SOURCE = re.compile(r'''^\s*require\s*\(?\s*["']([\w.-]+)["']''')
+LUA_BIND = re.compile(r'''^(\s*hl\.bind\(\s*)(["'])([^"']+)(\2\s*,.*)$''')
+KEY = re.compile(r'^(?:(?:Super|Ctrl|Alt|Shift)\+)*[A-Za-z0-9_]+$')
+MARK = re.compile(r'(?:--|#)\s*nyri-(app|cmd):(\S+)(?:\s+(.*))?$')
+DESKTOP = re.compile(r'^[\w.@+-]+(?:\.desktop)?$')
+USER_BINDS = MAIN.parent / ("nyri-binds.conf" if MAIN.suffix == ".conf" else "nyri-binds.lua")
+MODS = {"SUPER": "Super", "CTRL": "Ctrl", "CONTROL": "Ctrl", "ALT": "Alt", "SHIFT": "Shift"}
+ACTIONS = {
+    "killactive": "Закрыть окно", "togglefloating": "Плавающее окно",
+    "fullscreen": "Полный экран", "workspace": "Рабочий стол",
+    "movetoworkspace": "Перенести окно на рабочий стол", "movefocus": "Сменить фокус",
+    "movewindow": "Переместить окно", "exit": "Завершить сеанс",
+    "pseudo": "Псевдотайлинг", "layoutmsg": "Изменить раскладку",
+    "cyclenext": "Следующее окно", "focuscurrentorlast": "Предыдущее окно",
+    "resizewindow": "Менять размер",
+}
+
+
+def files(path, seen=None):
+    seen = seen or set()
+    path = path.expanduser().resolve()
+    if path in seen or not path.is_file():
+        return
+    seen.add(path)
+    yield path
+    for line in path.read_text().splitlines():
+        if path.suffix == ".lua":
+            m = LUA_SOURCE.match(line)
+            if m:
+                yield from files(MAIN.parent / (m[1].replace(".", "/") + ".lua"), seen)
+            continue
+        m = SOURCE.match(line)
+        if not m:
+            continue
+        spec = os.path.expandvars(os.path.expanduser(m[1].strip()))
+        for source in glob.glob(spec):
+            yield from files(Path(source), seen)
+
+
+def nyri_title(args):
+    found = re.search(r"(?:^|[\s/])nyri\s+(.+)$", args or "")
+    tail = found[1].strip() if found else ""
+    return {
+        "lock": "Блокировка",
+        "launcher": "Запуск приложений",
+        "settings": "Настройки",
+        "sidebar": "Боковая панель",
+        "clipboard": "Буфер обмена",
+        "wallpaper": "Обои",
+        "session": "Завершение сеанса",
+        "region menu": "Снимок области",
+        "audio volumeUp": "Громче",
+        "audio volumeDown": "Тише",
+    }.get(tail, "")
+
+
+def exec_info(args):
+    launch = re.search(r"gtk-launch\s+(\S+)", args or "")
+    if launch:
+        return launch[1], "", args or ""
+    binary = ""
+    for tok in (args or "").split():
+        if tok in {"env", "nohup", "nice", "&", "&&", "||", ";", "|"} or ("=" in tok and not tok.startswith("/")):
+            continue
+        binary = tok.rsplit("/", 1)[-1]
+        break
+    return "", binary, args or ""
+
+
+SYSTEM_BINS = {"wpctl", "playerctl", "brightnessctl", "wayfreeze", "hyprshot", "hyprlock", "pidof"}
+
+
+def system_title(args):
+    low = (args or "").lower()
+    if "swappy" in low:
+        return "Снимок в редактор"
+    if "hyprshot" in low or "wayfreeze" in low:
+        return "Снимок Hyprshot"
+    if "playerctl next" in low:
+        return "Следующий трек"
+    if "playerctl prev" in low:
+        return "Предыдущий трек"
+    if "play-pause" in low:
+        return "Пауза / играть"
+    if "brightnessctl" in low:
+        return "Ярче" if "+" in args else "Темнее"
+    if "wpctl" in low and "source" in low:
+        return "Выключить микрофон"
+    if "wpctl" in low:
+        return "Выключить звук"
+    return ""
+
+
+def bind_kind(args, mark_kind, is_exec, binary="", dispatcher=""):
+    if mark_kind:
+        return mark_kind
+    if dispatcher == "exit" or "nyri " in (args or ""):
+        return "shell"
+    if not is_exec:
+        return "window"
+    low = args or ""
+    if binary in SYSTEM_BINS or "wayfreeze" in low or "mktemp" in low or low.startswith("tmp="):
+        return "system"
+    return "app"
+
+
+def canonical(value):
+    parts = value.replace("Mod+", "Super+").split("+")
+    return "+".join(sorted(x.lower() for x in parts[:-1]) + [parts[-1].lower()])
+
+
+def entries():
+    result = []
+    for path in files(MAIN):
+        lines = path.read_text().splitlines()
+        main_mod = "SUPER"
+        for line in lines:
+            m = re.match(r'^\s*\$mainMod\s*=\s*(\w+)', line)
+            if m:
+                main_mod = m[1].upper()
+        for number, line in enumerate(lines):
+            if path.suffix == ".lua":
+                m = LUA_BIND.match(line)
+                if not m:
+                    continue
+                parts = [part.strip() for part in m[3].split("+")]
+                display = "+".join([MODS.get(x.upper(), x.title()) for x in parts[:-1]] + [parts[-1]])
+                action = re.search(r'hl\.dsp\.([\w.]+)\(', m[4])
+                action = action[1] if action else ""
+                names = {"window.close": "Закрыть окно", "window.float": "Плавающее окно",
+                         "window.move": "Переместить окно", "focus": "Сменить фокус или рабочий стол",
+                         "exit": "Завершить сеанс", "window.pseudo": "Псевдотайлинг",
+                         "layout": "Изменить раскладку", "window.drag": "Перетаскивать окно",
+                         "window.resize": "Изменить размер окна"}
+                title = names.get(action, "Действие Hyprland")
+                command = re.search(r'hl\.dsp\.exec_cmd\(("(?:[^"\\]|\\.)*")\)', m[4])
+                args = json.loads(command[1]) if command else ""
+                mark = MARK.search(line)
+                desktop, binary, command_text = exec_info(args)
+                if mark and mark[3]:
+                    title = mark[3].strip()
+                elif nyri_title(args):
+                    title = nyri_title(args)
+                elif system_title(args):
+                    title = system_title(args)
+                elif command:
+                    title = binary or "Команда"
+                kind = bind_kind(args, mark[1] if mark else "", bool(command), binary, action)
+                result.append({"id": f"{mark[1]}:{mark[2]}" if mark else f"{path}:{number}",
+                               "key": display, "displayKey": display, "title": title,
+                               "kind": kind, "removable": kind in ("app", "cmd"),
+                               "desktop": desktop, "bin": binary, "command": command_text})
+                continue
+            m = BIND.match(line)
+            if not m:
+                continue
+            raw_mod = m[2].replace("$mainMod", main_mod)
+            mods = [MODS.get(x.upper(), x.title()) for x in raw_mod.split() if x]
+            raw_key = m[3].strip()
+            pretty = {
+                "left": "Влево", "right": "Вправо", "up": "Вверх", "down": "Вниз",
+                "mouse:272": "ЛКМ", "mouse:273": "ПКМ",
+                "mouse_down": "Колёсико вниз", "mouse_up": "Колёсико вверх",
+                "PRINT": "Print", "SPACE": "Пробел",
+                "XF86AudioRaiseVolume": "Громкость +", "XF86AudioLowerVolume": "Громкость −",
+                "XF86AudioMute": "Без звука", "XF86AudioMicMute": "Микрофон",
+                "XF86MonBrightnessUp": "Яркость +", "XF86MonBrightnessDown": "Яркость −",
+                "XF86AudioNext": "Следующий трек", "XF86AudioPrev": "Предыдущий трек",
+                "XF86AudioPlay": "Играть", "XF86AudioPause": "Пауза",
+            }.get(raw_key, raw_key)
+            logical = "+".join(mods + [raw_key])
+            display = "+".join(mods + [pretty])
+            dispatcher, args = m[4].strip(), (m[5] or "").lstrip(", ").strip()
+            mark = MARK.search(line)
+            desktop, binary, command_text = exec_info(args if dispatcher == "exec" else "")
+            titled = nyri_title(args) if dispatcher == "exec" else ""
+            title = mark[3].strip() if mark and mark[3] else (titled or ACTIONS.get(dispatcher, dispatcher))
+            if not mark and not titled and dispatcher == "exec":
+                title = system_title(args) or binary or "Команда"
+            elif "bindm" in m[1] and dispatcher == "movewindow":
+                title = "Перетаскивать окно"
+            elif dispatcher == "movewindow":
+                title = {"l": "Окно влево", "r": "Окно вправо", "u": "Окно вверх", "d": "Окно вниз"}.get(args, "Переместить окно")
+            elif dispatcher == "resizewindow":
+                title = "Менять размер"
+            elif dispatcher == "workspace" and args == "e+1":
+                title = "Следующий стол"
+            elif dispatcher == "workspace" and args == "e-1":
+                title = "Предыдущий стол"
+            elif dispatcher in ("workspace", "movetoworkspace") and not mark:
+                title = f"{title} {args}".strip()
+            if raw_key == "XF86AudioPlay":
+                title = "Играть"
+            elif raw_key == "XF86AudioPause":
+                title = "Пауза"
+            kind = bind_kind(args, mark[1] if mark else "", dispatcher == "exec", binary, dispatcher)
+            result.append({"id": f"{mark[1]}:{mark[2]}" if mark else f"{path}:{number}",
+                           "key": logical, "displayKey": display, "title": title,
+                           "kind": kind, "removable": kind in ("app", "cmd"),
+                           "desktop": desktop, "bin": binary, "command": command_text})
+    return result
+
+
+def reload(path, before):
+    result = subprocess.run(["hyprctl", "reload"], capture_output=True, text=True)
+    errors = subprocess.run(["hyprctl", "-j", "configerrors"], capture_output=True, text=True)
+    try:
+        problems = json.loads(errors.stdout) if errors.returncode == 0 else []
+    except ValueError:
+        problems = [] if errors.stdout.strip().lower() in ("", "ok", "no config errors") else [errors.stdout.strip()]
+    if isinstance(problems, list):
+        problems = [item for item in problems if str(item).strip() and str(item).strip().lower() not in ("ok", "no config errors")]
+    elif not problems:
+        problems = []
+    if result.returncode or problems:
+        path.write_text(before)
+        subprocess.run(["hyprctl", "reload"], capture_output=True)
+        raise ValueError("Hyprland отклонил сочетание: " + (errors.stdout or result.stderr).strip())
+
+
+def shifted(chord):
+    parts = chord.split("+")
+    mods = parts[:-1]
+    if any(part.lower() == "shift" for part in mods):
+        return chord
+    return "+".join(mods + ["Shift", parts[-1]])
+
+
+def workspace_number(title):
+    match = re.fullmatch(r"Рабочий стол (\d+)", title or "")
+    return int(match[1]) if match else None
+
+
+def move_number(title):
+    if not re.search(r"перенест|перемест", title or "", re.I):
+        return None
+    match = re.search(r"рабочий стол (\d+)$", title or "", re.I)
+    return int(match[1]) if match else None
+
+
+def locate_line(entry):
+    ident = entry["id"]
+    if ident.startswith(("app:", "cmd:")):
+        token = "nyri-" + ident
+        number = next(i for i, line in enumerate(USER_BINDS.read_text().splitlines()) if token in line)
+        return USER_BINDS, number
+    path_text, number = ident.rsplit(":", 1)
+    return Path(path_text), int(number)
+
+
+def rewrite_line(path, line, new):
+    parsed = (LUA_BIND if path.suffix == ".lua" else BIND).match(line.rstrip("\n"))
+    if not parsed:
+        raise ValueError("Строка бинда изменилась")
+    parts = new.split("+")
+    key = parts[-1]
+    if key.lower() in {"left", "right", "up", "down"}:
+        key = key.lower()
+    if path.suffix == ".lua":
+        written = " + ".join([part.upper() for part in parts[:-1]] + [key])
+        return f"{parsed[1]}{parsed[2]}{written}{parsed[4]}\n"
+    modifiers = " ".join(part.upper() for part in parts[:-1])
+    return f"{parsed[1]}{modifiers}, {key}, {parsed[4]}{parsed[5] or ''}\n"
+
+
+def set_key(old_id, new):
+    if not KEY.fullmatch(new):
+        raise ValueError("Некорректное сочетание клавиш")
+    found = entries()
+    match = next((e for e in found if e["id"] == old_id), None)
+    if not match:
+        raise ValueError("Исходное сочетание не найдено")
+    if move_number(match["title"]) is not None:
+        raise ValueError("Перенос совпадает со столом и меняется вместе с ним")
+    jobs = [(match, new)]
+    number = workspace_number(match["title"])
+    if number is not None:
+        if any(part.lower() == "shift" for part in new.split("+")[:-1]):
+            raise ValueError("Shift занят переносом окна на этот стол")
+        partner = next((e for e in found if move_number(e["title"]) == number), None)
+        if partner:
+            jobs.append((partner, shifted(new)))
+    taken = {entry["id"] for entry, _chord in jobs}
+    for _entry, chord in jobs:
+        occupied = next((e for e in found if canonical(e["key"]) == canonical(chord) and e["id"] not in taken), None)
+        if occupied:
+            raise ValueError(f"{chord} уже занято: {occupied['title']}")
+    grouped = {}
+    for entry, chord in jobs:
+        path, index = locate_line(entry)
+        grouped.setdefault(path, []).append((index, chord))
+    originals = {path: path.read_text() for path in grouped}
+    for path, edits in grouped.items():
+        lines = originals[path].splitlines(keepends=True)
+        for index, chord in edits:
+            lines[index] = rewrite_line(path, lines[index], chord)
+        path.write_text("".join(lines))
+    primary = next(iter(grouped))
+    reload(primary, originals[primary])
+    print("Сохранено")
+
+
+def bind_row(key, command, mark):
+    parts = key.split("+")
+    if USER_BINDS.suffix == ".lua":
+        chord = " + ".join([part.upper() for part in parts[:-1]] + [parts[-1]])
+        return f'hl.bind("{chord}", hl.dsp.exec_cmd({json.dumps(command)})) -- {mark}\n'
+    mods = " ".join(part.upper() for part in parts[:-1])
+    return f"bind = {mods}, {parts[-1]}, exec, {command} # {mark}\n"
+
+
+def write_user(row):
+    before = USER_BINDS.read_text() if USER_BINDS.exists() else ""
+    if not before:
+        before = "# Локальные бинды Nyri.\n" if USER_BINDS.suffix == ".conf" else "-- Local Nyri shortcuts.\n"
+    USER_BINDS.write_text(before + ("" if before.endswith("\n") else "\n") + row)
+    reload(USER_BINDS, before)
+
+
+def add_app(desktop, title, new):
+    if not DESKTOP.fullmatch(desktop):
+        raise ValueError("Некорректный идентификатор приложения")
+    if not KEY.fullmatch(new):
+        raise ValueError("Некорректное сочетание клавиш")
+    found = entries()
+    if any(e["id"] == f"app:{desktop}" for e in found):
+        raise ValueError("Это приложение уже привязано")
+    occupied = next((e for e in found if canonical(e["key"]) == canonical(new)), None)
+    if occupied:
+        raise ValueError(f"{new} уже занято: {occupied['title']}")
+    write_user(bind_row(new, f"gtk-launch {desktop}", f"nyri-app:{desktop} {title}"))
+
+
+def add_cmd(title, command, new):
+    if not title.strip() or not command.strip():
+        raise ValueError("Нужны название и команда")
+    if not KEY.fullmatch(new):
+        raise ValueError("Некорректное сочетание клавиш")
+    found = entries()
+    occupied = next((e for e in found if canonical(e["key"]) == canonical(new)), None)
+    if occupied:
+        raise ValueError(f"{new} уже занято: {occupied['title']}")
+    import time
+    write_user(bind_row(new, command.strip(), f"nyri-cmd:{time.time_ns()} {title.strip()}"))
+
+
+def remove_bind(old_id):
+    entry = next((e for e in entries() if e["id"] == old_id), None)
+    if entry and entry["kind"] not in ("app", "cmd"):
+        raise ValueError("Это сочетание нельзя удалить")
+    kind, _, ident = old_id.partition(":")
+    if kind in ("app", "cmd") and ident and "/" not in kind:
+        token = f"nyri-{kind}:{ident}"
+        if not USER_BINDS.exists() or token not in USER_BINDS.read_text():
+            raise ValueError("Такого бинда нет")
+        before = USER_BINDS.read_text()
+        lines = [line for line in before.splitlines(keepends=True) if token not in line]
+        USER_BINDS.write_text("".join(lines))
+        reload(USER_BINDS, before)
+        return
+    path_text, number = old_id.rsplit(":", 1)
+    path = Path(path_text)
+    lines = path.read_text().splitlines(keepends=True)
+    index = int(number)
+    if index < 0 or index >= len(lines):
+        raise ValueError("Такого бинда нет")
+    if not ((path.suffix == ".lua" and LUA_BIND.match(lines[index].rstrip("\n"))) or BIND.match(lines[index])):
+        raise ValueError("Такого бинда нет")
+    before = "".join(lines)
+    del lines[index]
+    path.write_text("".join(lines))
+    reload(path, before)
+
+
+if __name__ == "__main__":
+    try:
+        command = sys.argv[1] if len(sys.argv) > 1 else "list"
+        if command == "list": print(json.dumps(entries(), ensure_ascii=False))
+        elif command == "set" and len(sys.argv) == 4: set_key(sys.argv[2], sys.argv[3])
+        elif command == "add" and len(sys.argv) == 5: add_app(sys.argv[2], sys.argv[3], sys.argv[4]); print("Сохранено")
+        elif command == "add-cmd" and len(sys.argv) == 5: add_cmd(sys.argv[2], sys.argv[3], sys.argv[4]); print("Сохранено")
+        elif command == "remove" and len(sys.argv) == 3: remove_bind(sys.argv[2]); print("Удалено")
+        else: raise ValueError("Использование: nyri-hypr-binds list|set|add|remove")
+    except (OSError, ValueError) as error:
+        print(error, file=sys.stderr)
+        sys.exit(1)

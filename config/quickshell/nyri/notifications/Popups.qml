@@ -12,6 +12,8 @@ PanelWindow {
     visible: Notifs.popups.count > 0 || exitTimer.running
     color: "transparent"
     readonly property string side: Config.o.notifications.position
+    readonly property int away: side === "left" ? -1 : 1
+    readonly property int gap: 12
     anchors { top: true; right: side === "right"; left: side === "left" }
     margins { top: Panels.barBottom ? 4 : 12 + 40 + 4; right: 0 }
     exclusionMode: ExclusionMode.Ignore
@@ -21,10 +23,10 @@ PanelWindow {
 
     Item {
         id: hit
-        x: list.x
-        y: list.y
-        width: list.width
-        height: list.contentItem.childrenRect.height
+        x: stack.x
+        y: stack.y
+        width: stack.width
+        height: stack.implicitHeight
     }
 
     WlrLayershell.namespace: "nyri-notifications"
@@ -32,72 +34,121 @@ PanelWindow {
 
     Timer {
         id: exitTimer
-        interval: Motion.emphasizedAccel.duration + 50
+        interval: 240
     }
     Connections {
         target: Notifs.popups
         function onCountChanged() { if (Notifs.popups.count === 0) exitTimer.restart() }
     }
 
-    ListView {
-        id: list
-
+    Column {
+        id: stack
         x: 12
         y: 8
         width: 400
-        height: parent.height - y
-        spacing: 8
-        interactive: false
-        model: Notifs.popups
+        spacing: root.gap
 
-        add: Transition {
-            NumberAnimation { property: "x"; from: root.side === "left" ? -420 : root.side === "center" ? 0 : 420; to: 0; duration: Motion.defaultSpatial.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.defaultSpatial.curve }
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Motion.effects.duration }
-        }
-        remove: Transition {
-            NumberAnimation { property: "x"; to: root.side === "left" ? -420 : 420; duration: Motion.emphasizedAccel.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccel.curve }
-            NumberAnimation { property: "opacity"; to: 0; duration: Motion.emphasizedAccel.duration }
-        }
-        displaced: Transition {
-            NumberAnimation { property: "y"; duration: Motion.defaultSpatial.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.defaultSpatial.curve }
-        }
+        Repeater {
+            model: Notifs.popups
 
-        delegate: Item {
-            id: slot
+            Item {
+                id: slot
 
-            required property int nid
-            readonly property var notif: Notifs.find(nid)
+                required property int nid
+                readonly property var notif: Notifs.find(nid)
+                readonly property real full: Math.max(card.implicitHeight, 1)
 
-            width: list.width
-            height: swipe.implicitHeight
+                property string phase: "idle"
+                property bool done: false
+                property real xoff: 0
+                property real box: full
 
-            Swipeable {
-                id: swipe
-                width: parent.width
-                onDismissed: Notifs.hidePopup(slot.nid)
+                width: stack.width
+                height: phase === "collapse" ? box : full
+                clip: phase === "collapse"
 
-            NotificationCard {
-                id: card
+                Behavior on height {
+                    NumberAnimation {
+                        duration: 90
+                        easing.type: Easing.OutCubic
+                        onFinished: if (slot.phase === "collapse" && slot.height < 2) slot.finish()
+                    }
+                }
 
-                property real born: 0
-                SpatialAnim on born { from: 0; to: 1; speed: "fast" }
+                function leave(dir) {
+                    if (phase !== "idle") return;
+                    phase = "out";
+                    exit.to = (dir < 0 ? -1 : 1) * (width + 24);
+                    exit.restart();
+                }
 
-                width: parent.width
-                height: implicitHeight
-                notif: slot.notif
-                popup: true
-                radius: height / 2 + (Shape.largeIncreased - height / 2) * Math.min(1, born)
-                scale: 0.88 + 0.12 * born
-                transformOrigin: root.side === "left" ? Item.Left : root.side === "center" ? Item.Top : Item.Right
-            }
-            }
+                function finish() {
+                    if (done) return;
+                    done = true;
+                    if (notif) notif.dismiss();
+                    else Notifs.hidePopup(nid);
+                }
 
-            HoverHandler { id: hover }
+                NotificationCard {
+                    id: card
+                    width: parent.width
+                    height: implicitHeight
+                    y: 0
+                    x: drag.active ? drag.activeTranslation.x : slot.xoff
+                    notif: slot.notif
+                    popup: true
+                    animateClose: true
+                    onCloseRequested: slot.leave(root.away)
+                }
 
-            Timer {
-                interval: Notifs.timeoutFor(slot.notif)
-                running: interval > 0 && !hover.hovered
-                onTriggered: Notifs.hidePopup(slot.nid)
+                HoverHandler { id: hover }
+
+                Timer {
+                    interval: Notifs.timeoutFor(slot.notif)
+                    running: interval > 0 && slot.phase === "idle" && !hover.hovered
+                    onTriggered: slot.leave(root.away)
+                }
+
+                NumberAnimation {
+                    id: exit
+                    target: slot
+                    property: "xoff"
+                    duration: 100
+                    easing.type: Easing.InCubic
+                    onFinished: {
+                        slot.box = 0;
+                        slot.phase = "collapse";
+                    }
+                }
+
+                NumberAnimation {
+                    id: back
+                    target: slot
+                    property: "xoff"
+                    to: 0
+                    duration: 160
+                    easing.type: Easing.OutCubic
+                }
+
+                DragHandler {
+                    id: drag
+                    target: null
+                    enabled: slot.phase === "idle"
+                    xAxis.enabled: true
+                    yAxis.enabled: false
+                    onActiveChanged: {
+                        if (active) {
+                            back.stop();
+                            return;
+                        }
+                        if (slot.phase !== "idle") return;
+                        slot.xoff = activeTranslation.x;
+                        if (Math.abs(slot.xoff) > slot.width * 0.28)
+                            slot.leave(Math.sign(slot.xoff) || root.away);
+                        else
+                            back.restart();
+                    }
+                }
             }
         }
     }

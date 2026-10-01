@@ -21,10 +21,22 @@ Item {
 
     property bool shown: false
     SpringValue { id: introSpring; target: root.shown ? 1 : 0; damping: 0.7; stiffness: 200 }
-    Component.onCompleted: shown = true
+    function playIntro() {
+        introSpring.value = 0;
+        introSpring.velocity = 0;
+        if (shown) introSpring.running = true;
+        else shown = true;
+    }
+    function holdIntro() {
+        shown = false;
+        introSpring.value = 0;
+        introSpring.velocity = 0;
+        introSpring.running = false;
+    }
+    Component.onCompleted: if (!Lock.locked) shown = true
     Connections {
         target: Lock
-        function onUnlocked() { introSpring.value = 0; introSpring.running = true; }
+        function onLockedChanged() { if (Lock.locked) root.holdIntro(); else root.playIntro(); }
     }
     function stage(i) { return Math.max(0, Math.min(1.2, introSpring.value * 1.5 - i * 0.12)); }
 
@@ -51,7 +63,10 @@ Item {
         return s.charAt(0).toUpperCase() + s.slice(1);
     }
     readonly property var now: Weather.ready ? Weather.describe(Weather.current.code, Weather.current.day) : null
-
+    function clockSurface(color) {
+        return Qt.tint(color, Qt.alpha("#ffffff", Colors.mode === "dark" ? 0.64 : 0.32));
+    }
+    readonly property color clockInk: Colors.mode === "dark" ? Colors.m3onPrimaryFixed : Colors.m3onPrimaryContainer
     function duration(s) {
         if (!s || s <= 0) return "";
         const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
@@ -241,6 +256,7 @@ Item {
         anchors.fill: parent
         transform: deskScale
         visible: root.cfg.enabled
+        opacity: 1
         z: root.held ? 250 : 0
 
         DeskItem {
@@ -282,7 +298,7 @@ Item {
                             width: 260
                             height: 260
                             shape: "cookie12Sided"
-                            color: Colors.m3primaryContainer
+                            color: root.clockSurface(Colors.m3primaryContainer)
                             rotation: turn.value % 360
                         }
                         Column {
@@ -292,7 +308,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 pixelSize: 104
                                 weight: 680
-                                color: Colors.m3onPrimaryContainer
+                                color: root.clockInk
                                 speed: "slow"
                                 text: Qt.formatTime(clock.date, "HH")
                             }
@@ -314,7 +330,7 @@ Item {
                         width: pillCol.implicitWidth + 64
                         height: 150
                         radius: height / 2
-                        color: Colors.m3primaryContainer
+                        color: root.clockSurface(Colors.m3primaryContainer)
 
                         Column {
                             id: pillCol
@@ -324,14 +340,14 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 pixelSize: 88
                                 weight: 680
-                                color: Colors.m3onPrimaryContainer
+                                color: root.clockInk
                                 speed: "slow"
                                 text: Qt.formatTime(clock.date, "HH:mm")
                             }
                             MText {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 textStyle: Type.titleMediumEmph
-                                color: Colors.m3onPrimaryContainer
+                                color: root.clockInk
                                 opacity: 0.8
                                 text: root.dateLine
                             }
@@ -351,7 +367,7 @@ Item {
                         MaterialShape {
                             anchors.fill: parent
                             shape: "cookie9Sided"
-                            color: Colors.m3primaryContainer
+                            color: root.clockSurface(Colors.m3primaryContainer)
                         }
                         Repeater {
                             model: 12
@@ -363,7 +379,7 @@ Item {
                                 width: index % 3 === 0 ? 10 : 6
                                 height: width
                                 radius: width / 2
-                                color: Colors.m3onPrimaryContainer
+                                color: root.clockInk
                                 opacity: index % 3 === 0 ? 0.9 : 0.45
                             }
                         }
@@ -373,7 +389,7 @@ Item {
                             width: 18
                             height: 70
                             radius: 9
-                            color: Colors.m3onPrimaryContainer
+                            color: root.clockInk
                             transform: Rotation { origin.x: 9; origin.y: 60; angle: hourS.value }
                         }
                         Rectangle {
@@ -392,7 +408,7 @@ Item {
                             radius: 11
                             color: Colors.m3primary
                             border.width: 5
-                            border.color: Colors.m3primaryContainer
+                            border.color: root.clockSurface(Colors.m3primaryContainer)
                         }
                     }
                 }
@@ -405,16 +421,16 @@ Item {
                             width: 168
                             height: 168
                             shape: "cookie9Sided"
-                            color: Colors.m3primaryContainer
-                            RollingText { anchors.centerIn: parent; pixelSize: 78; weight: 700; color: Colors.m3onPrimaryContainer; speed: "slow"; text: Qt.formatTime(clock.date, "HH") }
+                            color: root.clockSurface(Colors.m3primaryContainer)
+                            RollingText { anchors.centerIn: parent; pixelSize: 78; weight: 700; color: root.clockInk; speed: "slow"; text: Qt.formatTime(clock.date, "HH") }
                         }
                         Rectangle {
                             anchors.bottom: parent.bottom
                             width: 150
                             height: 150
                             radius: Shape.extraLarge * 1.6
-                            color: Colors.m3secondaryContainer
-                            RollingText { anchors.centerIn: parent; pixelSize: 70; weight: 700; color: Colors.m3onSecondaryContainer; speed: "slow"; text: Qt.formatTime(clock.date, "mm") }
+                            color: root.clockSurface(Colors.m3secondaryContainer)
+                            RollingText { anchors.centerIn: parent; pixelSize: 70; weight: 700; color: root.clockInk; speed: "slow"; text: Qt.formatTime(clock.date, "mm") }
                         }
                     }
                 }
@@ -1033,10 +1049,10 @@ Item {
                                     width: usageCol.width
                                     height: 28
                                     readonly property real share: modelData[1] / Math.max(1, usage.topApps[0][1])
-                                    IconImage {
+                                    AppIcon {
                                         anchors.verticalCenter: parent.verticalCenter
                                         implicitSize: 22
-                                        source: Quickshell.iconPath(Apps.iconFor(modelData[0]), "application-x-executable")
+                                        source: Apps.iconSourceFor(modelData[0])
                                     }
                                     Rectangle {
                                         x: 32

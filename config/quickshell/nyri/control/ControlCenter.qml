@@ -10,6 +10,7 @@ Surface {
     id: root
 
     name: "control"
+    keyboard: false
 
     readonly property var battery: UPower.displayDevice
 
@@ -28,21 +29,22 @@ Surface {
         page = pageId;
     }
 
-    function tileOn(id) { return !(Array.isArray(Config.o.control.hidden) && Config.o.control.hidden.indexOf(id) >= 0); }
+    function tileOn(id) { return Config.list(Config.o.control.hidden).indexOf(id) < 0; }
+    function cardOn(id) { return Config.list(Config.o.control.hiddenCards).indexOf(id) < 0; }
 
     readonly property var carousel: {
         const out = [];
         const playing = Media.player?.isPlaying ?? false;
-        if (playing) out.push({ id: "media", kind: "media", active: true });
-        const live = Activities.list.filter(a => ["media", "phone", "timer", "stopwatch"].indexOf(a.kind) < 0);
+        if (playing && cardOn("media")) out.push({ id: "media", kind: "media", active: true });
+        const live = Activities.list.filter(a => ["media", "phone", "timer", "stopwatch"].indexOf(a.kind) < 0 && cardOn(a.kind));
         for (const a of live) out.push({ id: "live:" + a.id, kind: "live", a, active: true });
-        if (!playing) out.push({ id: "media", kind: "media", active: false });
-        if (Phone.daemon) out.push({ id: "phone", kind: "phone", active: false });
+        if (!playing && cardOn("media")) out.push({ id: "media", kind: "media", active: false });
+        if (Phone.daemon && cardOn("phone")) out.push({ id: "phone", kind: "phone", active: false });
         const timers = Activities.list.filter(a => a.kind === "timer");
-        if (!timers.length) out.push({ id: "timer", kind: "live", a: { id: "idle:timer", kind: "timer-idle", actions: [] }, active: false });
-        timers.forEach((a, i) => out.push({ id: i ? "live:" + a.id : "timer", kind: "live", a, active: true }));
+        if (!timers.length && cardOn("timer")) out.push({ id: "timer", kind: "live", a: { id: "idle:timer", kind: "timer-idle", actions: [] }, active: false });
+        if (cardOn("timer")) timers.forEach((a, i) => out.push({ id: i ? "live:" + a.id : "timer", kind: "live", a, active: true }));
         const sw = Activities.list.find(a => a.kind === "stopwatch");
-        out.push({ id: "stopwatch", kind: "live", a: sw ?? { id: "idle:stopwatch", kind: "stopwatch-idle", actions: [] }, active: !!sw });
+        if (cardOn("stopwatch")) out.push({ id: "stopwatch", kind: "live", a: sw ?? { id: "idle:stopwatch", kind: "stopwatch-idle", actions: [] }, active: !!sw });
         return out;
     }
     function slideOf(id) { return carousel.find(c => c.id === id) ?? null; }
@@ -69,7 +71,7 @@ Surface {
             anchors.fill: parent
             anchors.margins: 16
             clip: true
-            Overscroll { flick: flick }
+            Overscroll { flick: flick; step: 3.2; touchpad: 2.4; coast: 0.5; coastMax: 1800; glideStiff: 780 }
 
             contentHeight: root.page === "main" ? content.implicitHeight : sub.implicitHeight
 
@@ -310,8 +312,7 @@ Surface {
                         icon: Privacy.active ? "shield_lock" : "shield_person"
                         label: "Приватность"
                         visible: root.tileOn("privacy")
-                        sublabel: Privacy.anyOn ? [Privacy.micOn ? "микрофон" : "", Privacy.camOn ? "камера" : "", Privacy.casting ? "экран" : ""].filter(Boolean).join(", ")
-                                : Privacy.active ? "Режим включён" : "Всё тихо"
+                        sublabel: Privacy.active ? "Включено" : "Выключено"
                         checked: Privacy.active
                         details: true
                         onDetailsClicked: root.openFrom(privacyTile, "privacy")
@@ -327,6 +328,16 @@ Surface {
                         sublabel: Toggles.dark ? "Включена" : "Выключена"
                         checked: Toggles.dark
                         onClicked: Toggles.toggleDark()
+                    }
+
+                    Tile {
+                        width: parent.cell
+                        icon: "screenshot_region"
+                        label: "Захват экрана"
+                        visible: root.tileOn("capture")
+                        sublabel: Toggles.recording ? "Идёт запись" : "Снимок · видео"
+                        checked: Toggles.recording
+                        onClicked: Quickshell.execDetached([Paths.bin + "/nyri", "region", "menu"])
                     }
                 }
 

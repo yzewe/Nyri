@@ -31,8 +31,8 @@ Item {
 
     MouseArea {
         anchors.fill: parent
-        acceptedButtons: Qt.AllButtons
-        onWheel: event => event.accepted = true
+        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+        onWheel: event => event.accepted = false
     }
 
     Item {

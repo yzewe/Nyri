@@ -20,16 +20,17 @@ Column {
         weather: { icon: "partly_cloudy_day", label: "Погода" },
         media: { icon: "music_note", label: "Музыка" }
     })
-    readonly property var all: Object.keys(info)
+    readonly property var all: Object.keys(info).filter(i => i !== "clock")
     function ids(zone) {
         if (zone === "hidden") {
             const used = [].concat(ids("left"), ids("center"), ids("right"));
             return all.filter(i => used.indexOf(i) < 0);
         }
         const v = Config.o.bar[zone];
-        return Array.isArray(v) ? v : ({ left: ["launcher", "workspaces", "title"], center: ["clock", "live"], right: ["tray", "status", "control"] })[zone];
+        return Config.list(v).filter(i => i !== "clock");
     }
     function move(id, zone, index) {
+        if (id === "clock") return;
         const next = {};
         for (const z of ["left", "center", "right"]) next[z] = ids(z).filter(i => i !== id);
         if (zone !== "hidden") {
@@ -70,7 +71,7 @@ Column {
         const n = list.length + (extra > 0 ? 1 : 0);
         return t + Math.max(0, n - 1) * gapOf(zone);
     }
-    function rowStart(zone, total, width) { return zone === "center" ? (width - total) / 2 : zone === "right" ? width - total : 0; }
+    function rowStart(zone, total, width) { return zone === "right" ? width - total : 0; }
     function slotIn(zone, id) {
         const box = zoneItems[zone];
         if (!box) return Qt.point(0, 0);
@@ -106,6 +107,16 @@ Column {
             radius: height / 2
             color: Colors.m3surfaceContainerHigh
             readonly property real third: (width - 20) / 3
+        }
+
+        Rectangle {
+            x: (bar.width - width) / 2
+            y: 10
+            width: 40
+            height: 40
+            radius: 20
+            color: Colors.m3primaryContainer
+            MIcon { anchors.centerIn: parent; icon: "schedule"; size: 22; color: Colors.m3onPrimaryContainer }
         }
 
         Repeater {
@@ -150,9 +161,9 @@ Column {
                 readonly property var list: page.ids(zone)
                 readonly property var vis: list.filter(i => i !== page.held)
                 readonly property bool hot: page.held !== "" && page.overZone === zone
-                x: inBar ? bar.x + 10 + bar.third * index : tray.x
+                x: inBar ? (zone === "center" ? bar.width / 2 + 24 : bar.x + 10 + bar.third * index) : tray.x
                 y: inBar ? bar.y : tray.y
-                width: inBar ? bar.third : tray.width
+                width: inBar ? (zone === "center" ? bar.third / 2 - 24 : bar.third) : tray.width
                 height: inBar ? bar.height : tray.height
                 Component.onCompleted: { const m = Object.assign({}, page.zoneItems); m[zone] = zoneBox; page.zoneItems = m; }
 

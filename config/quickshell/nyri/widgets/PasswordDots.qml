@@ -1,18 +1,20 @@
 import QtQuick
 import qs.theme
 
-Row {
+Item {
     id: root
 
     property int length: 0
     property int max: 14
-    property real size: 16
+    property real size: 14
     property color color: Colors.m3primary
+    property real spacing: 5
+    readonly property int fit: width > size ? Math.max(1, Math.floor((width + spacing) / (size + spacing))) : max
 
-    readonly property var pool: ["cookie4Sided", "clover4Leaf", "sunny", "pentagon", "gem",
-                                 "puffy", "flower", "heart", "burst", "diamond", "pill", "arch"]
+    readonly property var pool: ["cookie4Sided", "cookie6Sided", "clover4Leaf", "sunny", "pentagon", "gem",
+                                 "puffy", "flower", "diamond"]
 
-    spacing: 6
+    clip: true
 
     onLengthChanged: sync()
     Component.onCompleted: sync()
@@ -26,6 +28,12 @@ Row {
 
     ListModel { id: chars }
 
+    Row {
+        id: row
+        anchors.verticalCenter: parent.verticalCenter
+        x: row.width > root.width ? root.width - row.width : (root.width - row.width) / 2
+        spacing: root.spacing
+
     Repeater {
         model: chars
 
@@ -33,7 +41,7 @@ Row {
             id: slot
             required property int index
             required property string shape
-            readonly property bool shown: index >= chars.count - root.max
+            readonly property bool shown: index >= chars.count - root.fit
 
             width: shown ? root.size : 0
             height: root.size
@@ -41,15 +49,16 @@ Row {
 
             property bool born: false
             Component.onCompleted: Qt.callLater(() => slot.born = true)
-            SpringValue { id: pop; target: slot.born ? 1 : 0; damping: 0.5; stiffness: 700 }
+            SpringValue { id: pop; target: slot.born ? 1 : 0; damping: 0.78; stiffness: 520 }
 
             MaterialShape {
                 anchors.fill: parent
+                anchors.margins: 2
                 shape: slot.shape
                 color: root.color
-                scale: Math.max(0, pop.value)
-                rotation: (1 - pop.value) * -90
+                scale: 0.82 + 0.18 * Math.max(0, Math.min(1, pop.value))
             }
         }
+    }
     }
 }

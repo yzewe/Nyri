@@ -23,11 +23,11 @@ PanelWindow {
 
     function step(dir) {
         if (!open) {
-            list = Object.values(Niri.windows).sort((a, b) =>
+            list = Object.values(Compositor.windows).sort((a, b) =>
                 (b.focus_timestamp?.secs ?? 0) - (a.focus_timestamp?.secs ?? 0)
                 || (b.focus_timestamp?.nanos ?? 0) - (a.focus_timestamp?.nanos ?? 0));
             if (list.length < 2) {
-                if (list.length === 1) Niri.action("focus-window", "--id", String(list[0].id));
+                if (list.length === 1) Compositor.action("focus-window", "--id", String(list[0].id));
                 return;
             }
             current = dir > 0 ? 1 : list.length - 1;
@@ -43,7 +43,7 @@ PanelWindow {
         const w = list[current];
         open = false;
         commitTimer.stop();
-        if (w) Niri.action("focus-window", "--id", String(w.id));
+        if (w) Compositor.action("focus-window", "--id", String(w.id));
     }
 
     Timer {
@@ -116,12 +116,12 @@ PanelWindow {
                         Behavior on color { ColorAnim {} }
                     }
 
-                    IconImage {
+                    AppIcon {
                         anchors.horizontalCenter: parent.horizontalCenter
                         y: 22
                         implicitSize: 64
                         scale: tile.selected ? 1.08 : 1
-                        source: Quickshell.iconPath(Apps.iconFor(tile.modelData.app_id), "application-x-executable")
+                        source: Apps.iconSourceFor(tile.modelData.app_id, tile.modelData.title)
 
                         Behavior on scale { SpatialAnim { speed: "fast" } }
                     }

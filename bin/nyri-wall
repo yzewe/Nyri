@@ -23,7 +23,7 @@ writes $NYRI_DATA/walls/<style>-<palette>-<seed>.{svg,png} (NYRI_DATA
 defaults to ~/.local/share/nyri; the PNG is what matugen reads) and runs
 nyri-theme on it.
 """
-import colorsys, json, math, os, random, subprocess, sys
+import colorsys, hashlib, json, math, os, random, re, subprocess, sys
 from pathlib import Path
 
 W, H = 2880, 1800
@@ -85,6 +85,7 @@ STYLES = [
     ("flowers", "Цветы", "local_florist"),
     ("rings", "Кольца", "radio_button_checked"),
     ("stripes", "Полосы", "line_weight"),
+    ("bands", "Цветные полосы", "view_stream"),
     ("garden", "Сад", "yard"),
     ("objects", "Предметы", "category"),
     ("pair", "Пара", "join_inner"),
@@ -438,20 +439,15 @@ def arches(c, r):
             c.node(ps, 0, (cx, base), [bob(c, 0, unit * 0.022, 6.5, 6.5, ph=-(cx / c.w) * 5 - j * 0.7)])
 
 def waves(c, r):
-    top = 0.12
-    if r.random() < 0.5:
-        top = 0.38
-        c.circle(c.w * r.uniform(0.2, 0.8), c.h * r.uniform(0.3, 0.36), c.u * r.uniform(0.11, 0.16), r.choice(c.fg),
-                 [bob(c, 0, c.u * 0.03, 22, 30)])
-    n = c.n(r.choice([5, 6, 7, 8]), lo=3)
-    colors = (c.fg * 3)[:n]
+    colors = [c.bg] + c.fg
+    band_h = c.h / len(colors)
     way = c.mr.choice([1, -1])
-    for k in range(n):
-        y = c.h * (top + (1 - top) * k / n)
-        amp = c.u * r.uniform(0.02, 0.06)
+    for k in range(1, len(colors)):
+        y = band_h * k
+        amp = min(c.u * r.uniform(0.02, 0.045), band_h * 0.18)
         freq = r.choice([1, 1.5, 2]) / c.k
         ph = r.uniform(0, 2 * math.pi)
-        c.wave(y, amp, c.w / freq, ph, colors[k], way * c.mr.uniform(0.25, 0.4) * (1 + 0.35 * k / n))
+        c.wave(y, amp, c.w / freq, ph, colors[k], way * c.mr.uniform(0.25, 0.4) * (1 + 0.35 * k / len(colors)))
 
 def hills(c, r):
     sun = r.choice(c.fg)
@@ -784,6 +780,13 @@ def stripes(c, r):
         lane += 1
     c.end()
 
+def bands(c, r):
+    colors = [c.bg] + c.fg
+    for i, color in enumerate(colors):
+        y0 = c.h * i / len(colors)
+        y1 = c.h * (i + 1) / len(colors)
+        c.rect(0, y0, c.w, y1 - y0 + 0.5, color)
+
 def garden(c, r):
     ink = sorted(c.fg, key=luminance)
     stem = ink[0] if luminance(c.bg) > 0.5 else ink[-1]
@@ -887,14 +890,19 @@ def pair(c, r):
 RENDER = {"bauhaus": bauhaus, "arches": arches, "waves": waves, "hills": hills, "pebbles": pebbles,
           "ribbons": ribbons, "shapes": shapes, "rainbow": rainbow, "dots": dots, "cosmos": cosmos,
           "truchet": truchet, "memphis": memphis, "sunset": sunset, "peaks": peaks, "flowers": flowers,
-          "rings": rings, "stripes": stripes, "garden": garden, "objects": objects, "pair": pair}
+          "rings": rings, "stripes": stripes, "bands": bands, "garden": garden, "objects": objects, "pair": pair}
 
 def palette_by_name(name):
+    base, sep, variant = name.rpartition("/")
+    if sep and variant in ("dark", "light"):
+        return toned(palette_by_name(base), variant)
+    if name.startswith("colors:"):
+        colors = name.removeprefix("colors:").split(",")
+        if not 2 <= len(colors) <= 16 or any(not re.fullmatch(r"#[0-9a-fA-F]{6}", c) for c in colors):
+            raise SystemExit("nyri-wall: palette needs 2–16 valid hex colors")
+        return colors
     if name.startswith("#"):
         return custom_palette(name)
-    base, _, variant = name.partition("/")
-    if variant in ("dark", "light"):
-        return toned(palette_by_name(base), variant)
     for p in PALETTES:
         if p["name"] == name:
             return p["colors"]
@@ -918,7 +926,9 @@ def accent(colors):
     return max(colors[1:] or colors, key=chroma)
 
 def stem_for(style, pal, seed, grid=False, scale=1.0):
-    if pal.startswith("#"):
+    if pal.startswith("colors:"):
+        tag = "m" + hashlib.sha256(pal.encode()).hexdigest()[:16]
+    elif pal.startswith("#"):
         tag = "c" + pal[1:].replace("/", "-")
     else:
         base, _, variant = pal.partition("/")
@@ -993,26 +1003,15 @@ def main(argv):
         cur = json.loads((WALLS / "current.json").read_text()) if (WALLS / "current.json").exists() else None
         nyri = Path(__file__).resolve().parent
         env = dict(os.environ, NYRI_MODE=want)
-        if not cur:
-            subprocess.run([str(nyri / "nyri-theme")], check=True, env=env)
-            return 0
-        pal = cur["palette"]
-        dark_now = luminance(palette_by_name(pal)[0]) < 0.35
-        if want == "dark":
-            if dark_now:
-                subprocess.run([str(nyri / "nyri-theme")], check=True, env=env)
-                return 0
-            (WALLS / "day.json").write_text(json.dumps(cur, ensure_ascii=False))
-            night = pal.split("/")[0] + "/dark"
-            print(apply(cur["style"], night, cur["seed"], cur.get("grid", False), cur.get("scale", 1.0), env))
-        else:
+        if cur and cur["palette"].endswith("/dark"):
             day = json.loads((WALLS / "day.json").read_text()) if (WALLS / "day.json").exists() else None
-            if day and dark_now:
-                print(apply(day["style"], day["palette"], day["seed"], day.get("grid", False), day.get("scale", 1.0), env))
-            elif pal.endswith("/dark"):
-                print(apply(cur["style"], pal[:-5], cur["seed"], cur.get("grid", False), cur.get("scale", 1.0), env))
-            else:
-                subprocess.run([str(nyri / "nyri-theme")], check=True, env=env)
+            original = day if day and cur["palette"] == day["palette"] + "/dark" else {
+                **cur, "palette": cur["palette"][:-5]
+            }
+            print(apply(original["style"], original["palette"], original["seed"],
+                        original.get("grid", False), original.get("scale", 1.0), env))
+        else:
+            subprocess.run([str(nyri / "nyri-theme")], check=True, env=env)
     else:
         print(__doc__)
         return 2

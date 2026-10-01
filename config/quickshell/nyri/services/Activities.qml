@@ -21,7 +21,7 @@ Singleton {
         if (Privacy.camOn)
             out.push({ id: "camera", kind: "camera", icon: "videocam", tone: "error", priority: 90,
                        title: "Камера включена", text: Privacy.camApps.join(", "), progress: -1,
-                       actions: [{ icon: "videocam_off", label: "Отключить", key: "stop" }] });
+                       actions: [] });
         if (Privacy.micOn)
             out.push({ id: "mic", kind: "mic", icon: Privacy.micBlocked ? "mic_off" : "mic", tone: Privacy.micBlocked ? "primary" : "error", priority: 85,
                        title: Privacy.micBlocked ? "Микрофон заглушён" : "Микрофон слушает", text: Privacy.micApps.join(", "), progress: -1,
@@ -61,7 +61,7 @@ Singleton {
         const p = Media.player;
         if (p && p.isPlaying)
             out.push({ id: "media", kind: "media", icon: "music_note", tone: "primary", priority: 50, ambient: false,
-                       title: p.trackTitle || p.identity, text: p.trackArtist ?? "", cover: p.trackArtUrl ?? "",
+                       title: p.trackTitle || p.identity, text: p.trackArtist ?? "", cover: Media.art,
                        progress: -1, actions: [] });
         for (const f of flashes)
             out.push(f);
@@ -99,8 +99,7 @@ Singleton {
         if (!a) return;
         if (a.kind === "record") Quickshell.execDetached(["pkill", "-INT", "-x", "wf-recorder"]);
         else if (a.kind === "cast") Privacy.stopCasts();
-        else if (a.kind === "camera") Privacy.stopCamera();
-        else if (a.kind === "mic") Privacy.muteMic(!Privacy.micBlocked);
+        else if (a.kind === "mic") Privacy.setMicBlocked(!Privacy.micBlocked);
         else if (a.kind === "timer") {
             const tid = parseInt(id.split(":")[1]);
             if (key === "more") timers = timers.map(t => t.id === tid ? Object.assign({}, t, { end: t.end + 60000, left: (t.left ?? 0) + 60000, total: t.total + 60000 }) : t);

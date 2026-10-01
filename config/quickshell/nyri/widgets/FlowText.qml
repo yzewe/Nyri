@@ -11,6 +11,7 @@ Item {
     property int horizontalAlignment: Text.AlignLeft
     property real rightPadding: 0
     property real maxWidth: Infinity
+    property bool animate: true
     readonly property bool sized: elide !== Text.ElideNone
 
     property bool onA: true
@@ -29,6 +30,12 @@ Item {
 
     onTextChanged: {
         if (current.text === text) return;
+        if (!animate) {
+            a.text = text;
+            b.text = text;
+            w.value = w.target;
+            return;
+        }
         previous.text = text;
         onA = !onA;
         t.value = 0;

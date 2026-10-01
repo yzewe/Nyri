@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""Read and edit niri bindings without replacing an occupied shortcut."""
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "niri"
+FILE = CONFIG_DIR / "binds.kdl"
+CONFIG = CONFIG_DIR / "config.kdl"
+DEFAULTS = ROOT / "config/niri/binds.defaults.kdl"
+LINE = re.compile(r'^(\s*)([A-Za-z0-9_+.-]+)(\s+[^{}]*?)?(\s*\{.*\})(\s*)$')
+KEY = re.compile(r'^(?:(?:Mod|Super|Alt|Ctrl|Shift)\+)*[A-Za-z0-9_]+$')
+APP = re.compile(r'// nyri-(app|cmd):(\S+)')
+DESKTOP = re.compile(r'^[\w.@+-]+(?:\.desktop)?$')
+
+ACTION_LABELS = {
+    'center-column': 'Центрировать колонку', 'close-window': 'Закрыть окно',
+    'consume-or-expel-window-left': 'Добавить окно в колонку слева',
+    'consume-or-expel-window-right': 'Добавить окно в колонку справа',
+    'focus-column-first': 'К первой колонке', 'focus-column-last': 'К последней колонке',
+    'focus-column-left': 'Колонка слева', 'focus-column-right': 'Колонка справа',
+    'focus-monitor-left': 'Монитор слева', 'focus-monitor-right': 'Монитор справа',
+    'focus-monitor-up': 'Монитор сверху', 'focus-monitor-down': 'Монитор снизу',
+    'focus-window-up': 'Окно выше', 'focus-window-down': 'Окно ниже',
+    'focus-workspace-up': 'Рабочий стол выше', 'focus-workspace-down': 'Рабочий стол ниже',
+    'fullscreen-window': 'Полный экран', 'move-column-left': 'Переместить колонку влево',
+    'move-column-right': 'Переместить колонку вправо',
+    'move-column-to-first': 'Переместить колонку в начало',
+    'move-column-to-last': 'Переместить колонку в конец',
+    'move-column-to-monitor-left': 'Переместить колонку на монитор слева',
+    'move-column-to-monitor-right': 'Переместить колонку на монитор справа',
+    'move-column-to-monitor-up': 'Переместить колонку на монитор сверху',
+    'move-column-to-monitor-down': 'Переместить колонку на монитор снизу',
+    'move-column-to-workspace-up': 'Переместить колонку на рабочий стол выше',
+    'move-column-to-workspace-down': 'Переместить колонку на рабочий стол ниже',
+    'move-window-up': 'Переместить окно выше', 'move-window-down': 'Переместить окно ниже',
+    'move-workspace-to-monitor-left': 'Переместить рабочий стол влево',
+    'move-workspace-to-monitor-right': 'Переместить рабочий стол вправо',
+    'power-off-monitors': 'Выключить экраны', 'quit': 'Завершить сеанс',
+    'reset-window-height': 'Сбросить высоту окна',
+    'screenshot-screen': 'Снимок всего экрана', 'screenshot-window': 'Снимок окна',
+    'switch-focus-between-floating-and-tiling': 'Переключить фокус между слоями',
+    'switch-preset-column-width': 'Следующая ширина колонки',
+    'toggle-keyboard-shortcuts-inhibit': 'Перехват сочетаний приложением',
+    'toggle-overview': 'Обзор окон', 'toggle-window-floating': 'Плавающее окно',
+}
+
+
+def label(action):
+    if action in ACTION_LABELS:
+        return ACTION_LABELS[action]
+    m = re.fullmatch(r'focus-workspace "?(\d+)"?', action)
+    if m:
+        return f'Рабочий стол {m[1]}'
+    m = re.fullmatch(r'move-window-to-workspace "?(\d+)"?', action)
+    if m:
+        return f'Переместить окно на рабочий стол {m[1]}'
+    if action.startswith('set-column-width'):
+        return 'Увеличить ширину колонки' if '+10%' in action else 'Уменьшить ширину колонки'
+    if action.startswith('set-window-height'):
+        return 'Увеличить высоту окна' if '+10%' in action else 'Уменьшить высоту окна'
+    if 'audio volumeUp' in action:
+        return 'Громче'
+    if 'audio volumeDown' in action:
+        return 'Тише'
+    if 'mpris playPause' in action:
+        return 'Пауза / играть'
+    if 'mpris next' in action:
+        return 'Следующий трек'
+    if 'mpris previous' in action:
+        return 'Предыдущий трек'
+    if 'quit' in action:
+        return 'Выход без подтверждения'
+    return action
+
+
+def kind_of(raw, marked):
+    if marked == "cmd":
+        return "cmd"
+    if marked == "app":
+        return "app"
+    if raw.strip() == "quit" or raw.strip().startswith("quit "):
+        return "shell"
+    if "nyri" in raw or raw.startswith('spawn "qs"') or raw.startswith('spawn "niri"'):
+        return "shell"
+    if raw.startswith("spawn"):
+        return "app"
+    return "window"
+
+
+def target(raw):
+    launch = re.search(r'gtk-launch\s+(\S+)', raw)
+    if launch:
+        return launch[1], "", raw
+    spawn = re.search(r'spawn(?:-sh)?\s+"([^"]+)"', raw)
+    if not spawn:
+        return "", "", ""
+    bit = spawn[1]
+    return "", bit.split("/")[-1].split()[0], bit
+
+
+def entries(lines):
+    found = []
+    media = {"Print", "XF86PowerOff", "XF86AudioRaiseVolume", "XF86AudioLowerVolume", "XF86AudioMute", "XF86AudioMicMute", "XF86MonBrightnessUp", "XF86MonBrightnessDown", "XF86AudioPlay", "XF86AudioPause", "XF86AudioNext", "XF86AudioPrev"}
+    for index, line in enumerate(lines):
+        m = LINE.match(line)
+        if not m or not ("+" in m[2] or m[2] in media):
+            continue
+        title = re.search(r'hotkey-overlay-title="([^"]+)"', m[3] or "")
+        raw = m[4].strip(" {};")
+        mark = APP.search(line)
+        name = title.group(1) if title else label(raw)
+        arrows = {
+            "Mod+Left": "Окно влево", "Mod+Right": "Окно вправо",
+            "Mod+Up": "Окно вверх", "Mod+Down": "Окно вниз",
+        }
+        if m[2] in arrows:
+            name = arrows[m[2]]
+        desktop, binary, command = target(raw)
+        found.append({"line": index, "key": m[2], "displayKey": m[2].replace("Mod+", "Super+"),
+                      "title": name, "kind": kind_of(raw, mark[1] if mark else ""),
+                      "removable": kind_of(raw, mark[1] if mark else "") in ("app", "cmd"), "desktop": desktop, "bin": binary, "command": command,
+                      "id": f"{mark[1]}:{mark[2]}" if mark else m[2]})
+    return found
+
+
+def canonical(key):
+    parts = key.lower().replace("mod", "super").split("+")
+    return "+".join(sorted(parts[:-1]) + [parts[-1]])
+
+
+def commit(lines, original):
+    FILE.write_text("".join(lines))
+    check = subprocess.run(["niri", "validate", "-c", str(CONFIG)], capture_output=True, text=True)
+    if check.returncode:
+        FILE.write_text(original)
+        raise ValueError("niri отклонил сочетание: " + (check.stderr or check.stdout).splitlines()[-1])
+    subprocess.run(["niri", "msg", "action", "load-config-file"], capture_output=True)
+
+
+def insert_row(lines, row):
+    for index in range(len(lines) - 1, -1, -1):
+        if lines[index].strip() == "}":
+            lines.insert(index, row)
+            return
+    raise ValueError("В binds.kdl нет закрывающей скобки")
+
+
+def insert_app(lines, key, desktop, title):
+    safe = title.replace('"', "'")
+    insert_row(lines, f'    {key} hotkey-overlay-title="{safe}" {{ spawn-sh "gtk-launch {desktop}"; }} // nyri-app:{desktop}\n')
+
+
+def insert_cmd(lines, key, title, command):
+    import time
+    stamp = str(time.time_ns())
+    safe = title.replace('"', "'")
+    escaped = command.replace("\\", "\\\\").replace('"', '\\"')
+    insert_row(lines, f'    {key} hotkey-overlay-title="{safe}" {{ spawn-sh "{escaped}"; }} // nyri-cmd:{stamp}\n')
+
+
+def main():
+    command = sys.argv[1] if len(sys.argv) > 1 else "list"
+    if command == "init":
+        target = ROOT / "config/niri/binds.kdl"
+        if not target.exists():
+            target.write_bytes(DEFAULTS.read_bytes())
+        return
+    lines = FILE.read_text().splitlines(keepends=True)
+    found = entries(lines)
+    if command == "list":
+        print(json.dumps(found, ensure_ascii=False))
+        return
+    if command == "remove" and len(sys.argv) == 3:
+        kind, _, ident = sys.argv[2].partition(":")
+        original = "".join(lines)
+        if kind in ("app", "cmd") and ident and f"nyri-{kind}:{ident}" in original:
+            kept = [line for line in lines if f"nyri-{kind}:{ident}" not in line]
+            commit(kept, original)
+            print("Удалено")
+            return
+        match = next((e for e in found if e["id"] == sys.argv[2] or e["key"].lower() == sys.argv[2].lower()), None)
+        if not match or match["kind"] not in ("app", "cmd"):
+            raise ValueError("Это сочетание нельзя удалить")
+        del lines[match["line"]]
+        commit(lines, original)
+        print("Удалено")
+        return
+    if command == "add" and len(sys.argv) == 5:
+        desktop, title, new = sys.argv[2:]
+        if not DESKTOP.fullmatch(desktop):
+            raise ValueError("Некорректный идентификатор приложения")
+        if not KEY.fullmatch(new):
+            raise ValueError("Некорректное сочетание клавиш")
+        if any(e["id"] == f"app:{desktop}" or e.get("desktop") == desktop for e in found):
+            raise ValueError("Это приложение уже привязано")
+        occupied = next((e for e in found if canonical(e["key"]) == canonical(new)), None)
+        if occupied:
+            raise ValueError(f"{new} уже занято: {occupied['title']}")
+        original = "".join(lines)
+        insert_app(lines, new, desktop, title)
+        commit(lines, original)
+        print("Сохранено")
+        return
+    if command == "add-cmd" and len(sys.argv) == 5:
+        title, run, new = sys.argv[2:]
+        if not title.strip() or not run.strip():
+            raise ValueError("Нужны название и команда")
+        if not KEY.fullmatch(new):
+            raise ValueError("Некорректное сочетание клавиш")
+        occupied = next((e for e in found if canonical(e["key"]) == canonical(new)), None)
+        if occupied:
+            raise ValueError(f"{new} уже занято: {occupied['title']}")
+        original = "".join(lines)
+        insert_cmd(lines, new, title.strip(), run.strip())
+        commit(lines, original)
+        print("Сохранено")
+        return
+    if command != "set" or len(sys.argv) != 4:
+        raise ValueError("Использование: nyri-binds list|set|add|remove")
+    old, new = sys.argv[2:]
+    if not KEY.fullmatch(new):
+        raise ValueError("Некорректное сочетание клавиш")
+    match = next((e for e in found if e["id"] == old or e["key"].lower() == old.lower()), None)
+    if not match:
+        raise ValueError("Исходное сочетание не найдено")
+
+    def workspace_number(title):
+        found_number = re.fullmatch(r"Рабочий стол (\d+)", title or "")
+        return int(found_number[1]) if found_number else None
+
+    def move_number(title):
+        if not re.search(r"перенест|перемест", title or "", re.I):
+            return None
+        found_number = re.search(r"рабочий стол (\d+)$", title or "", re.I)
+        return int(found_number[1]) if found_number else None
+
+    def shifted(chord):
+        parts = chord.split("+")
+        if any(part.lower() == "shift" for part in parts[:-1]):
+            return chord
+        return "+".join(parts[:-1] + ["Shift", parts[-1]])
+
+    if move_number(match["title"]) is not None:
+        raise ValueError("Перенос совпадает со столом и меняется вместе с ним")
+    jobs = [(match, new)]
+    number = workspace_number(match["title"])
+    if number is not None:
+        if any(part.lower() == "shift" for part in new.split("+")[:-1]):
+            raise ValueError("Shift занят переносом окна на этот стол")
+        partner = next((e for e in found if move_number(e["title"]) == number), None)
+        if partner:
+            jobs.append((partner, shifted(new)))
+    taken = {entry["line"] for entry, _chord in jobs}
+    for _entry, chord in jobs:
+        occupied = next((e for e in found if canonical(e["key"]) == canonical(chord) and e["line"] not in taken), None)
+        if occupied:
+            raise ValueError(f"{chord} уже занято: {occupied['title']}")
+    if all(entry["key"] == chord or entry["displayKey"] == chord for entry, chord in jobs):
+        print("Без изменений")
+        return
+    original = "".join(lines)
+    for entry, chord in jobs:
+        lines[entry["line"]] = re.sub(r'^(\s*)\S+', lambda m, chord=chord: m[1] + chord, lines[entry["line"]], count=1)
+    commit(lines, original)
+    print("Сохранено")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

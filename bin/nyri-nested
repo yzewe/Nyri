@@ -15,6 +15,7 @@ export NYRI_STATE="$TEST/state" NYRI_DATA="$TEST/data"
 export XDG_CACHE_HOME="$TEST/cache"
 [[ -f $NYRI_STATE/theme.json ]] || NYRI_NESTED=1 "$NYRI/bin/nyri-theme"
 
+"$NYRI/bin/nyri-binds" init
 "$NYRI/bin/nyri-link" overlay "$OVERLAY"
 
 wrap=()

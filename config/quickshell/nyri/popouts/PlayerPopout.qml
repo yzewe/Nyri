@@ -44,14 +44,28 @@ Surface {
         s = Math.max(0, Math.floor(s));
         return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
     }
+    function nextPlayer() {
+        const players = Media.players;
+        if (players.length < 2) return;
+        const at = players.indexOf(root.player);
+        Media.chosen = players[(at + 1) % players.length];
+    }
 
     Popout {
         id: card
         progress: root.progress
-        toW: root.lyricsOn && !Lyrics.none ? 760 : 420
+        readonly property bool lyricsReady: root.lyricsOn && Lyrics.lines.length > 0 && !Lyrics.none
+        SpringValue {
+            id: lyricsIn
+            target: card.lyricsReady ? 1 : 0
+            damping: 0.78
+            stiffness: 260
+            epsilon: 0.001
+            onTargetChanged: if (root.progress < 0.2) { value = target; velocity = 0; running = false; }
+        }
+        toW: 420 + 340 * lyricsIn.value
         toX: Math.max(12, Math.min(parent.width - toW - 12, (Panels.anchorW > 0 ? Panels.anchorX + Panels.anchorW / 2 : parent.width / 2) - toW / 2))
         toH: side.implicitHeight + 40
-        Behavior on toW { SpatialAnim {} }
 
         Column {
             id: side
@@ -60,41 +74,30 @@ Surface {
             width: 380
             spacing: 14
 
-            Flow {
-                width: parent.width
-                spacing: 6
-                visible: Media.players.length > 1
-                Repeater {
-                    model: Media.players
-                    FilterChip {
-                        required property var modelData
-                        text: modelData.identity || "Плеер"
-                        picked: modelData === root.player
-                        onClicked: Media.chosen = modelData
-                    }
-                }
-            }
-
             Item {
                 width: parent.width
                 height: coverSlot.height
                 Item { id: coverSlot; width: 148; height: 148 }
                 Rectangle {
+                    id: sourceChip
                     anchors.left: coverSlot.right
                     anchors.leftMargin: 18
                     anchors.top: coverSlot.top
                     visible: (root.player?.identity ?? "") !== ""
-                    width: srcRow.implicitWidth + 20
+                    width: Math.min(parent.width - coverSlot.width - 18, srcRow.implicitWidth + 20)
                     height: 26
                     radius: 13
                     color: Colors.m3secondaryContainer
+                    clip: true
                     Row {
                         id: srcRow
                         anchors.centerIn: parent
                         spacing: 5
                         MIcon { anchors.verticalCenter: parent.verticalCenter; icon: root.playing ? "graphic_eq" : "pause"; size: 14; fill: 1; color: Colors.m3onSecondaryContainer }
-                        MText { anchors.verticalCenter: parent.verticalCenter; textStyle: Type.labelMedium; color: Colors.m3onSecondaryContainer; text: root.player?.identity ?? "" }
+                        MText { anchors.verticalCenter: parent.verticalCenter; textStyle: Type.labelMedium; color: Colors.m3onSecondaryContainer; text: root.player?.identity ?? ""; elide: Text.ElideRight; width: Math.min(implicitWidth, sourceChip.width - 30) }
                     }
+                    HoverHandler { cursorShape: Media.players.length > 1 ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                    TapHandler { enabled: Media.players.length > 1; onTapped: root.nextPlayer() }
                 }
 
                 Column {
@@ -267,7 +270,10 @@ Surface {
             height: card.toH - 40
             radius: Shape.large
             color: Colors.m3surfaceContainerHigh
-            visible: root.lyricsOn && !Lyrics.none && width > 40
+            visible: lyricsIn.value > 0.04 && width > 40
+            opacity: Math.min(1, lyricsIn.value * 1.6)
+            scale: 0.94 + 0.06 * lyricsIn.value
+            transformOrigin: Item.Left
             clip: true
 
             ListView {
@@ -321,23 +327,6 @@ Surface {
                 }
             }
 
-            Column {
-                anchors.centerIn: parent
-                visible: Lyrics.lines.length === 0
-                spacing: 12
-                LoadingIndicator {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: 56; height: 56
-                    running: Lyrics.loading && lyricsBox.visible
-                    visible: Lyrics.loading
-                }
-                MText {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    textStyle: Type.bodyMedium
-                    color: Colors.m3onSurfaceVariant
-                    text: Lyrics.loading ? "Ищу текст…" : "Текста нет"
-                }
-            }
         }
     }
 
@@ -360,9 +349,10 @@ Surface {
         Image {
             id: big
             anchors.fill: parent
-            source: root.player?.trackArtUrl ?? ""
+            source: Media.art
             fillMode: Image.PreserveAspectCrop
-            sourceSize: Qt.size(320, 320)
+            smooth: true
+            mipmap: true
             asynchronous: true
         }
         MaterialShape {

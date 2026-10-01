@@ -128,7 +128,7 @@ Singleton {
 
     Process {
         id: stream
-        running: true
+        running: !Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")
         command: ["niri", "msg", "--json", "event-stream"]
         stdout: SplitParser {
             onRead: line => {

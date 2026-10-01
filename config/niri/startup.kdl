@@ -1,15 +1,18 @@
+spawn-at-startup "sh" "-c" "~/nyri/bin/nyri-splash"
+
 spawn-at-startup "qs" "-c" "nyri"
 
 spawn-at-startup "wl-paste" "--watch" "cliphist" "store"
 
 spawn-at-startup "sh" "-c" "~/nyri/bin/nyri-session offer"
 
-spawn-at-startup "sh" "-c" "systemctl --user import-environment XDG_MENU_PREFIX && kbuildsycoca6"
+spawn-at-startup "sh" "-c" "systemctl --user import-environment XDG_MENU_PREFIX; command -v kbuildsycoca6 >/dev/null && kbuildsycoca6"
 
 environment {
     XDG_CURRENT_DESKTOP "niri"
     XDG_MENU_PREFIX "plasma-"
-    ELECTRON_OZONE_PLATFORM_HINT "auto"
+    ELECTRON_OZONE_PLATFORM_HINT "wayland"
+    NIXOS_OZONE_WL "1"
     QT_QPA_PLATFORM "wayland;xcb"
     QT_WAYLAND_DISABLE_WINDOWDECORATION "1"
     QT_QPA_PLATFORMTHEME "kde"

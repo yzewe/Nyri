@@ -26,18 +26,21 @@ Scope {
     property bool grid: false
     property real patternScale: 1.0
     property real hue: 0.72
+    property var customColors: ["#e45757", "#f3c661", "#75c995", "#698ce4"]
+    property int selectedColor: 0
     property string tone: ""
     property int frame: 0
     property int thumbGen: 0
     property bool applying: false
 
     readonly property bool custom: palette.startsWith("#")
+    readonly property bool multi: palette.startsWith("colors:")
     readonly property string customSpec: Qt.hsla(hue, 0.62, 0.5, 1).toString() + (tone === "dark" ? "/dark" : "")
-    readonly property string spec: custom ? customSpec : palette + (tone ? "/" + tone : "")
+    readonly property string spec: multi ? palette : custom ? customSpec : palette + (tone ? "/" + tone : "")
     readonly property int styleIndex: styles.findIndex(s => s.id === style)
-    readonly property int paletteIndex: custom ? -1 : palettes.findIndex(p => p.name === palette)
+    readonly property int paletteIndex: custom || multi ? -1 : palettes.findIndex(p => p.name === palette)
     readonly property var styleInfo: styles[styleIndex] ?? null
-    readonly property string paletteTitle: custom ? "Свой цвет" : palette
+    readonly property string paletteTitle: multi ? "Своя палитра" : custom ? "Свой цвет" : palette
 
     function args() {
         const a = grid ? ["--grid"] : [];
@@ -62,6 +65,31 @@ Scope {
     function pickStyle(id) { if (id === style) return; style = id; regenerate(); }
     function pickPalette(name) { if (name === palette) return; palette = name; refresh(); }
     function pickCustom() { palette = customSpec; refresh(); }
+    function pickMulti() { tone = ""; palette = "colors:" + customColors.join(","); refresh(); }
+    function hexColor(c) { return "#" + [c.r, c.g, c.b].map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join(""); }
+    function setColor(index, value) {
+        if (!/^#[0-9a-fA-F]{6}$/.test(value)) return;
+        const next = customColors.slice();
+        next[index] = value.toLowerCase();
+        customColors = next;
+        palette = "colors:" + next.join(",");
+        colorDebounce.restart();
+    }
+    function addColor() {
+        if (customColors.length >= 16) return;
+        customColors = customColors.concat([hexColor(Qt.hsla(hue, 0.62, 0.5, 1))]);
+        selectedColor = customColors.length - 1;
+        palette = "colors:" + customColors.join(",");
+        colorDebounce.restart();
+    }
+    function removeColor() {
+        if (customColors.length <= 2) return;
+        const next = customColors.filter((_, i) => i !== selectedColor);
+        customColors = next;
+        selectedColor = Math.min(selectedColor, next.length - 1);
+        palette = "colors:" + next.join(",");
+        colorDebounce.restart();
+    }
     function shuffle() { seed = Math.floor(Math.random() * 100000); dice.target += 180; refresh(); }
     function apply() {
         if (applying) return;
@@ -72,6 +100,7 @@ Scope {
 
     onCustomSpecChanged: if (custom) hueDebounce.restart()
     Timer { id: hueDebounce; interval: 120; onTriggered: { root.palette = root.customSpec; root.refresh(); } }
+    Timer { id: colorDebounce; interval: 150; onTriggered: root.refresh() }
 
     onOpenChanged: {
         if (!open) return;
@@ -107,7 +136,10 @@ Scope {
                 root.patternScale = c.scale ?? 1;
                 const [base, variant] = c.palette.split("/");
                 root.tone = variant ?? "";
-                if (base.startsWith("#")) {
+                if (base.startsWith("colors:")) {
+                    root.customColors = base.slice(7).split(",");
+                    root.palette = base;
+                } else if (base.startsWith("#")) {
                     root.hue = Qt.color(base).hslHue;
                     root.palette = root.customSpec;
                 } else {
@@ -193,7 +225,7 @@ Scope {
                     ClippingRectangle {
                         id: hero
                         width: parent.width
-                        height: Math.min(width * 0.5625, win.height * 0.56)
+                        height: Math.min(width * 0.625, win.height * 0.56)
                         radius: Shape.extraLarge
                         color: Colors.m3surfaceContainerHighest
 
@@ -634,13 +666,13 @@ Scope {
                     Item {
                         id: customBox
                         width: parent.width
-                        SpringValue { id: cOpen; target: root.custom ? 1 : 0; damping: 0.78; stiffness: 360 }
+                        SpringValue { id: cOpen; target: root.custom || root.multi ? 1 : 0; damping: 0.78; stiffness: 360 }
                         height: 56
 
                         Item {
                             id: hueBar
                             anchors.verticalCenter: parent.verticalCenter
-                            width: Math.max(0, parent.width - modes.width - 16)
+                            width: root.multi ? parent.width : Math.max(0, parent.width - modes.width - 16)
                             opacity: Math.max(0, Math.min(1, cOpen.value * 1.3))
                             visible: opacity > 0.01
                             height: 48
@@ -680,7 +712,10 @@ Scope {
                                 id: hueArea
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                function set(x) { root.hue = Math.max(0, Math.min(0.999, (x - 18) / (hueBar.width - 36))); }
+                                function set(x) {
+                                    root.hue = Math.max(0, Math.min(0.999, (x - 18) / (hueBar.width - 36)));
+                                    if (root.multi) root.setColor(root.selectedColor, root.hexColor(Qt.hsla(root.hue, 0.62, 0.5, 1)));
+                                }
                                 onPressed: m => set(m.x)
                                 onPositionChanged: m => { if (pressed) set(m.x); }
                             }
@@ -688,9 +723,10 @@ Scope {
 
                         SegmentedButtons {
                             id: modes
+                            visible: !root.multi
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            width: root.custom ? 260 : parent.width
+                            width: root.multi ? 0 : root.custom ? 260 : parent.width
                             Behavior on width { SpatialAnim {} }
                             value: root.custom && root.tone === "" ? "light" : root.tone
                             options: root.custom
@@ -699,6 +735,73 @@ Scope {
                             onSelected: v => {
                                 root.tone = root.custom && v === "light" ? "" : v;
                                 if (!root.custom) root.refresh();
+                            }
+                        }
+                    }
+
+                    FilterChip {
+                        text: "Своя палитра"
+                        picked: root.multi
+                        onClicked: root.pickMulti()
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 10
+                        visible: root.multi
+
+                        MText {
+                            textStyle: Type.labelMedium
+                            color: Colors.m3onSurfaceVariant
+                            text: "Добавь цвета, выбери полосы или любой другой рисунок"
+                        }
+                        Flow {
+                            width: parent.width
+                            spacing: 6
+                            Repeater {
+                                model: root.customColors
+                                FilterChip {
+                                    required property int index
+                                    required property string modelData
+                                    text: String(index + 1)
+                                    swatch: [modelData, modelData, modelData]
+                                    picked: root.selectedColor === index
+                                    onClicked: {
+                                        root.selectedColor = index;
+                                        root.hue = Qt.color(modelData).hslHue;
+                                    }
+                                }
+                            }
+                            FilterChip {
+                                text: "+ Цвет"
+                                onClicked: root.addColor()
+                            }
+                        }
+                        Row {
+                            spacing: 8
+                            Rectangle {
+                                width: 144
+                                height: 36
+                                radius: Shape.small
+                                color: Colors.m3surfaceContainerHighest
+                                TextInput {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 8
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    color: Colors.m3onSurface
+                                    font.family: Type.monoFamily
+                                    font.pixelSize: 14
+                                    maximumLength: 7
+                                    text: root.customColors[root.selectedColor] ?? ""
+                                    onEditingFinished: root.setColor(root.selectedColor, text)
+                                }
+                            }
+                            IconButton {
+                                icon: "remove"
+                                style: "tonal"
+                                enabled: root.customColors.length > 2
+                                onClicked: root.removeColor()
                             }
                         }
                     }

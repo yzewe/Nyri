@@ -24,11 +24,13 @@ Rectangle {
 
     TextInput {
         id: input
-        anchors.verticalCenter: parent.verticalCenter
         anchors.left: lead.right
         anchors.leftMargin: 14
         anchors.right: clear.left
         anchors.rightMargin: 8
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        verticalAlignment: TextInput.AlignVCenter
         color: Colors.m3onSurface
         selectionColor: Colors.m3primaryContainer
         selectedTextColor: Colors.m3onPrimaryContainer
@@ -44,6 +46,13 @@ Rectangle {
             font.pixelSize: 17
             color: Colors.m3onSurfaceVariant
         }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.IBeamCursor
+        propagateComposedEvents: true
+        onPressed: mouse => { input.forceActiveFocus(); mouse.accepted = false; }
     }
 
     IconButton {

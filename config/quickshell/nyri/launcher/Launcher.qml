@@ -13,6 +13,22 @@ Surface {
     name: "launcher"
 
     readonly property string query: field.text
+    property bool pointerReady: false
+    property real lastPointerX: 0
+    property real lastPointerY: 0
+    function movedOver(sceneX, sceneY, localX, localY) {
+        if (!pointerReady) {
+            lastPointerX = sceneX;
+            lastPointerY = sceneY;
+            pointerReady = true;
+            return;
+        }
+        if (Math.abs(sceneX - lastPointerX) + Math.abs(sceneY - lastPointerY) < 3) return;
+        lastPointerX = sceneX;
+        lastPointerY = sceneY;
+        const index = list.indexAt(localX, localY + list.contentY);
+        if (index >= 0 && list.currentIndex !== index) list.currentIndex = index;
+    }
     property string filter: "all"
     readonly property var filters: [
         { id: "all", label: "Всё", icon: "apps" },
@@ -48,7 +64,7 @@ Surface {
             return [];
         const q = query.trim().toLowerCase();
         if (!q) {
-            if (filter === "window") return Object.values(Niri.windows).map(w => ({ kind: "window", win: w }));
+            if (filter === "window") return Object.values(Compositor.windows).map(w => ({ kind: "window", win: w }));
             return filter === "all" || filter === "app" ? Apps.search("").map(e => ({ kind: "app", entry: e })) : [];
         }
         const answer = root.looksLikeMath && root.calcResult && filter === "all" ? [{ kind: "calc", text: root.calcResult }] : [];
@@ -60,7 +76,7 @@ Surface {
             answer.push({ kind: "timer", secs, label: tm[3] ?? "", text: "Таймер на " + Activities.fmtDuration(secs * 1000) + (tm[3] ? " · " + tm[3] : "") });
 
         const scored = [];
-        for (const w of Object.values(Niri.windows)) {
+        for (const w of Object.values(Compositor.windows)) {
             const t = (w.title ?? "").toLowerCase(), id = (w.app_id ?? "").toLowerCase();
             const hit = Kb.best(vs, v => t.startsWith(v) || id.startsWith(v) ? 92 : t.includes(v) || id.includes(v) ? 75 : Kb.typo(v, Kb.terms(id)));
             if (hit.score) scored.push({ kind: "window", win: w, score: hit.score, from: hit.from });
@@ -153,13 +169,9 @@ Surface {
     readonly property bool currency: /RUB|USD|EUR|CNY|GBP|KZT|UAH/i.test(expression(query))
     property bool ratesFresh: false
 
-    property bool cascade: false
-    Timer { id: cascadeOff; interval: 450; onTriggered: root.cascade = false }
-
     onOpenChanged: {
         if (open) {
-            cascade = true;
-            cascadeOff.restart();
+            pointerReady = false;
             field.text = Panels.prefill;
             Panels.prefill = "";
             filter = "all";
@@ -183,7 +195,7 @@ Surface {
             const r = results[list.currentIndex];
             Panels.close();
             if (r.kind === "app") Apps.launch(r.entry);
-            else if (r.kind === "window") Niri.action("focus-window", "--id", String(r.win.id));
+            else if (r.kind === "window") Compositor.action("focus-window", "--id", String(r.win.id));
             else if (r.kind === "action") r.action.run();
             else if (r.kind === "setting") Panels.openSettings(r.page.page);
             else if (r.kind === "timer") Activities.addTimer(r.secs, r.label);
@@ -221,6 +233,7 @@ Surface {
     }
 
     onQueryChanged: {
+        pointerReady = false;
         list.currentIndex = 0;
         locateDebounce.restart();
         if (mode === "calc" || (mode === "apps" && looksLikeMath)) calcDebounce.restart();
@@ -314,22 +327,18 @@ Surface {
                 height: Math.min(count, 8) * 56
                 visible: root.mode === "apps"
                 model: root.results
+                onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
                 clip: true
                 Overscroll { flick: list; step: 0.47 }
-                highlightMoveDuration: 0
-                highlightFollowsCurrentItem: false
-
-                populate: Transition {
-                    id: pop
-                    enabled: root.cascade
-                    SequentialAnimation {
-                        PauseAnimation { duration: pop.ViewTransition.index * 28 }
-                        ParallelAnimation {
-                            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Motion.effects.duration }
-                            NumberAnimation { property: "x"; from: 32; to: 0; duration: Motion.fastSpatial.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.fastSpatial.curve }
-                        }
+                HoverHandler {
+                    cursorShape: Qt.PointingHandCursor
+                    onPointChanged: {
+                        const g = list.mapToGlobal(point.position.x, point.position.y);
+                        root.movedOver(g.x, g.y, point.position.x, point.position.y);
                     }
                 }
+                highlightMoveDuration: 0
+                highlightFollowsCurrentItem: false
 
                 highlight: Rectangle {
                     width: list.width
@@ -337,8 +346,13 @@ Surface {
                     y: hl.value
                     radius: Shape.largeIncreased
                     color: Colors.m3secondaryContainer
-
-                    SpringValue { id: hl; target: list.currentItem?.y ?? 0; damping: 0.72; stiffness: 700; epsilon: 0.1 }
+                    SpringValue {
+                        id: hl
+                        target: list.currentItem ? list.currentItem.y : 0
+                        damping: 0.78
+                        stiffness: 520
+                        epsilon: 0.4
+                    }
                 }
 
                 delegate: Item {
@@ -384,10 +398,10 @@ Surface {
                         width: 36
                         height: 36
 
-                        IconImage {
+                        AppIcon {
                             anchors.fill: parent
                             visible: row.symbol === ""
-                            source: row.symbol === "" ? Quickshell.iconPath(row.modelData.kind === "window" ? Apps.iconFor(row.modelData.win.app_id) : (row.entry?.icon ?? ""), "application-x-executable") : ""
+                            source: row.symbol === "" ? (row.modelData.kind === "window" ? Apps.iconSourceFor(row.modelData.win.app_id, row.modelData.win.title) : Apps.iconSourceFor(row.entry?.id)) : ""
                         }
 
                         Rectangle {
@@ -434,7 +448,7 @@ Surface {
                         MText {
                             width: parent.width
                             elide: Text.ElideRight
-                            textStyle: row.current ? Type.titleMediumEmph : Type.titleMedium
+                            textStyle: Type.titleMedium
                             color: row.current ? Colors.m3onSecondaryContainer : Colors.m3onSurface
                             text: row.title
                         }
@@ -451,10 +465,7 @@ Surface {
 
                     MouseArea {
                         anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onEntered: list.currentIndex = row.index
-                        onClicked: root.accept(false)
+                        onClicked: { list.currentIndex = row.index; root.accept(false); }
                     }
                 }
             }

@@ -6,6 +6,7 @@ Item {
     id: root
 
     property string text
+    property string icon: ""
     property bool picked: false
     property var swatch: null
     signal clicked
@@ -42,7 +43,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             width: 18 * pickS.value
             height: 18
-            visible: width > 0.5
+            visible: root.icon === "" && width > 0.5
             MIcon {
                 anchors.centerIn: parent
                 icon: "check"
@@ -65,6 +66,14 @@ Item {
                 Rectangle { width: 9; height: 18; color: root.swatch?.[0] ?? "transparent" }
                 Rectangle { x: 9; y: 9; width: 9; height: 9; color: root.swatch?.[1] ?? "transparent" }
             }
+        }
+
+        MIcon {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.icon !== ""
+            icon: root.icon
+            size: 18
+            color: root.picked ? Colors.m3onSecondaryContainer : Colors.m3primary
         }
 
         MText {

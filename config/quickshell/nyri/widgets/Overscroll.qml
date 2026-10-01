@@ -4,11 +4,17 @@ Item {
     id: root
 
     required property Flickable flick
-    property real step: 1.5
-    property real touchpad: 1.7
+    property real step: 1
+    property real touchpad: 1
+    property real coast: 0.16
+    property real coastMax: 360
+    property real glideStiff: 280
 
     property real speed: 0
     property real lastAt: 0
+    property real goal: 0
+    property real written: 0
+    property real ownUntil: 0
 
     width: 0
     height: 0
@@ -16,25 +22,30 @@ Item {
     readonly property real minY: flick.originY - flick.topMargin
     readonly property real maxY: Math.max(minY, flick.originY + flick.contentHeight + flick.bottomMargin - flick.height)
 
-    SpringValue { id: kick; target: 0; damping: 0.55; stiffness: 520; epsilon: 0.2 }
-    readonly property real o: flick.verticalOvershoot !== 0 ? flick.verticalOvershoot : kick.value
-    readonly property real k: Math.min(0.14, Math.abs(o) / Math.max(1, flick.height) * 0.7)
+    function clamp(y) { return Math.max(minY, Math.min(maxY, y)); }
+    function own() { ownUntil = Date.now() + 700; }
 
-    Scale {
-        id: stretch
-        origin.x: root.flick.width / 2
-        origin.y: root.o < 0 ? root.flick.contentY : root.flick.contentY + root.flick.height
-        yScale: 1 + root.k
-        xScale: 1 - root.k * 0.12
-    }
-
-    property real goal: 0
     SpringValue {
         id: glide
-        damping: 1.0
-        stiffness: 380
-        epsilon: 0.3
-        onValueChanged: if (running) root.flick.contentY = value
+        damping: 1
+        stiffness: 420
+        epsilon: 0.15
+        onValueChanged: if (running) { root.written = value; root.flick.contentY = value; }
+    }
+
+    function follow(delta, stiff) {
+        const f = root.flick;
+        f.cancelFlick();
+        root.own();
+        if (!glide.running) {
+            glide.value = f.contentY;
+            glide.velocity = 0;
+            root.goal = f.contentY;
+        }
+        root.goal = root.clamp(root.goal + delta);
+        glide.stiffness = stiff;
+        glide.target = root.goal;
+        glide.running = true;
     }
 
     WheelHandler {
@@ -42,55 +53,59 @@ Item {
         target: null
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         onWheel: event => {
-            const f = root.flick;
+            event.accepted = true;
             const pad = event.device.type === PointerDevice.TouchPad || (event.pixelDelta.y !== 0 && Math.abs(event.angleDelta.y) < 120);
-            if (pad) {
-                glide.running = false;
-                const now = Date.now();
-                if (event.phase === Qt.ScrollBegin) { root.speed = 0; f.cancelFlick(); }
-                if (event.phase === Qt.ScrollEnd) {
-                    if (Math.abs(root.speed) > 150 && now - root.lastAt < 120) f.flick(0, -root.speed);
-                    root.speed = 0;
-                    return;
-                }
-                if (event.phase === Qt.ScrollMomentum) return;
-                const d = -(event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y / 8) * root.touchpad;
-                const dt = Math.max(4, Math.min(100, now - root.lastAt));
-                root.speed = root.speed * 0.6 + (d / dt * 1000) * 0.4;
-                root.lastAt = now;
-                const want = f.contentY + d;
-                const clamped = Math.max(root.minY, Math.min(root.maxY, want));
-                if (clamped !== want && Math.abs(want - clamped) > 2 && !kick.running) {
-                    kick.velocity = (want < clamped ? -1 : 1) * Math.min(1200, Math.abs(root.speed) * 0.5 + 300);
-                    kick.running = true;
-                }
-                f.contentY = clamped;
+            if (pad && event.phase === Qt.ScrollMomentum) return;
+            const now = Date.now();
+            if (pad && event.phase === Qt.ScrollBegin) { root.speed = 0; glide.running = false; root.goal = root.flick.contentY; }
+            if (pad && event.phase === Qt.ScrollEnd) {
+                const coast = Math.max(-root.coastMax, Math.min(root.coastMax, root.speed * root.coast));
+                root.speed = 0;
+                if (Math.abs(coast) > 8) root.follow(coast, Math.min(260, root.glideStiff));
                 return;
             }
-            if (!glide.running) { glide.value = f.contentY; glide.velocity = 0; root.goal = f.contentY; }
-            const want = root.goal - event.angleDelta.y * root.step;
-            const clamped = Math.max(root.minY, Math.min(root.maxY, want));
-            if (clamped !== want && Math.abs(root.goal - clamped) < 1) {
-                kick.velocity = (want < clamped ? -1 : 1) * 900;
-                kick.running = true;
-            }
-            root.goal = clamped;
-            glide.target = clamped;
-            glide.running = true;
+            const d = pad
+                ? -(event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y / 8) * root.touchpad
+                : -event.angleDelta.y * root.step;
+            if (Math.abs(d) < 0.4) return;
+            const dt = Math.max(4, Math.min(80, now - root.lastAt));
+            root.speed = root.speed * 0.45 + (d / dt * 1000) * 0.55;
+            root.lastAt = now;
+            root.follow(d, pad ? 2200 : root.glideStiff);
         }
     }
 
     Connections {
         target: root.flick
-        function onMovementStarted() { glide.running = false; }
+        function onDraggingChanged() {
+            if (!root.flick.dragging) return;
+            glide.running = false;
+            root.goal = root.flick.contentY;
+            glide.value = root.flick.contentY;
+            root.written = root.flick.contentY;
+        }
+        function onContentYChanged() {
+            const y = root.flick.contentY;
+            const delta = y - root.written;
+            if (Math.abs(delta) < 1) return;
+            if (root.flick.dragging || Math.abs(delta) > 280) {
+                glide.running = false;
+                root.goal = y;
+                glide.value = y;
+                root.written = y;
+                return;
+            }
+            if (glide.running || Date.now() < root.ownUntil) root.flick.contentY = root.written;
+            else { root.goal = y; glide.value = y; root.written = y; }
+        }
     }
 
     Component.onCompleted: {
         flick.interactive = Qt.binding(() => flick.contentHeight + flick.topMargin + flick.bottomMargin > flick.height + 1);
-        flick.flickDeceleration = 2200;
-        flick.maximumFlickVelocity = 9000;
-        flick.boundsBehavior = Flickable.DragAndOvershootBounds;
+        flick.boundsBehavior = Flickable.StopAtBounds;
         flick.boundsMovement = Flickable.StopAtBounds;
-        flick.contentItem.transform = [stretch];
+        root.goal = flick.contentY;
+        root.written = flick.contentY;
+        glide.value = flick.contentY;
     }
 }

@@ -1,6 +1,6 @@
 # Nyri
 
-Оболочка для [niri](https://github.com/YaLTeR/niri) на [Quickshell](https://quickshell.org)
+Оболочка для [niri](https://github.com/YaLTeR/niri) и [Hyprland](https://hypr.land/) на [Quickshell](https://quickshell.org)
 в стиле Material 3 Expressive. Цвета берутся из обоев через matugen и расходятся
 по niri, GTK, Qt и терминалу.
 
@@ -50,23 +50,36 @@
 
 Проверено на Arch с niri 26.04 и Quickshell 0.3.1.
 
-```bash
-sudo pacman -S niri quickshell matugen jq fuzzel cliphist wl-clipboard grim slurp \
-    wf-recorder hyprpicker brightnessctl wireplumber playerctl tesseract tesseract-data-rus \
-    curl libnotify glib2 kconfig plasma-workspace wlsunset libqalculate resvg swappy \
-    python-gobject kitty plocate kdeconnect
-```
-
-Шрифты: Rubik, Material Symbols Rounded, JetBrainsMono Nerd Font.
+На Arch и EndeavourOS установщик сам ставит пакеты из официальных репозиториев.
+Plasma для этого не нужна. Репозиторий клонируй в `~/nyri`: чистый CLI после
+установки пакетов не знает, где лежит оболочка, а стартовый конфиг niri вызывает
+`~/nyri/bin/nyri-session`.
 
 ```bash
 git clone https://github.com/yzewe/Nyri ~/nyri
 ~/nyri/bin/nyri-install
 ```
 
-Репозиторий должен лежать в `~/nyri`. Установщик ставит ссылки в `~/.config`,
-а то, что заменил, складывает в `~/.config-nyri-backup/`. Потом перезайди в сессию.
-Откатиться можно командой `~/nyri/bin/nyri-install --undo`.
+Установщик ставит ссылки в `~/.config`, а то, что заменил, складывает в
+`~/.config-nyri-backup/`. Шрифт Rubik он докачивает сам, если пакета нет.
+Дисплейный менеджер он не ставит. Если ни SDDM, ни GDM, ни greetd не включены,
+вход с tty1 запускает сессию. Откатиться можно командой `~/nyri/bin/nyri-install --undo`.
+
+Если `pacman` нет, сначала поставь композитор, Quickshell, matugen и jq.
+Без них установщик остановится до изменения конфигов.
+
+### Hyprland
+
+Для обычного тайлинга без горизонтальной прокрутки установи Nyri в существующий сеанс Hyprland:
+
+```bash
+~/nyri/bin/nyri-install --hyprland
+```
+
+Установщик работает с текущим `~/.config/hypr/hyprland.lua` или старым `hyprland.conf`. Если конфига ещё нет, он создаёт Lua-файл. Он добавляет запуск Quickshell, цвета рамок из темы и локальные файлы настроек окон и биндов. Существующие сочетания остаются на месте; Nyri добавляет только свободные сочетания. Для старого `.conf` установщик сохраняет резервную копию и отключает Waybar и hyprpaper. В следующий вход выбери сеанс Hyprland. Раздел «Окна» меняет штатные параметры Hyprland: Dwindle/Master, отступы, рамку, скругление и тень.
+
+Локальные файлы `~/.config/hypr/nyri-binds.lua`, `nyri-windows.lua` и `nyri-colors.lua` находятся вне репозитория. Для старого формата используются такие же имена с расширением `.conf`.
+Для отмены интеграции: `~/nyri/bin/nyri-install --hyprland --undo`.
 
 ## Клавиши
 

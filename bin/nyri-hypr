@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""Keep Nyri's Hyprland window options in a user-local config fragment."""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+CFG = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "hypr"
+LUA = (CFG / "hyprland.lua").exists() or not (CFG / "hyprland.conf").exists()
+MAIN = CFG / ("hyprland.lua" if LUA else "hyprland.conf")
+WINDOWS = CFG / ("nyri-windows.lua" if LUA else "nyri-windows.conf")
+BINDS = CFG / ("nyri-binds.lua" if LUA else "nyri-binds.conf")
+ROOT = Path(__file__).resolve().parent.parent
+OPTIONS = {
+    "gapsIn": ("general:gaps_in", int, 0, 64),
+    "gapsOut": ("general:gaps_out", int, 0, 64),
+    "border": ("general:border_size", int, 0, 12),
+    "corner": ("decoration:rounding", int, 0, 48),
+    "shadow": ("decoration:shadow:enabled", int, 0, 1),
+    "layout": ("general:layout", str, None, None),
+}
+
+
+def run(*args):
+    p = subprocess.run(args, capture_output=True, text=True, timeout=8)
+    if p.returncode:
+        raise RuntimeError((p.stderr or p.stdout).strip())
+    return p.stdout.strip()
+
+
+def install(start=False):
+    if LUA:
+        return install_lua(start)
+    if not MAIN.exists():
+        raise RuntimeError(f"Не найден {MAIN}")
+    before = MAIN.read_text()
+    after = before
+    if not re.search(r'^\s*source\s*=.*nyri-windows\.conf\s*$', after, re.M):
+        after += f"\n# Настройки окон Nyri. Личные бинды остаются выше.\nsource = {WINDOWS}\n"
+    if start:
+        run(str(ROOT / "bin/nyri-hypr-colors"))
+        if not re.search(r'^\s*source\s*=.*nyri-colors\.conf\s*$', after, re.M):
+            after += f"source = {CFG / 'nyri-colors.conf'}\n"
+    if start and not re.search(r'^\s*exec-once\s*=.*\bqs\s+-c\s+nyri\b', after, re.M):
+        after += "exec-once = qs -c nyri\n"
+        after = re.sub(r'^(\s*exec-once\s*=\s*(?:waybar|hyprpaper)\b.*)$', r'# disabled by Nyri: \1', after, flags=re.M)
+    if start and not re.search(r'^\s*source\s*=.*nyri-binds\.conf\s*$', after, re.M):
+        after += f"source = {BINDS}\n"
+    if start and not re.search(r'^\s*exec-once\s*=.*nyri-session\s+offer\b', after, re.M):
+        after += f"exec-once = {ROOT}/bin/nyri-session offer\n"
+    if after != before:
+        backup = MAIN.with_name(f"hyprland.conf.nyri-backup-{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() % 1000000:06d}")
+        shutil.copy2(MAIN, backup)
+        MAIN.write_text(after)
+        print(f"Резервная копия: {backup}")
+    WINDOWS.touch(exist_ok=True)
+    if start and not BINDS.exists():
+        used = set()
+        parser = subprocess.run([str(ROOT / "bin/nyri-hypr-binds"), "list"], capture_output=True, text=True)
+        if parser.returncode == 0:
+            used = {item["key"].lower() for item in json.loads(parser.stdout)}
+        wanted = [
+            ("Super+Ctrl+I", "SUPER CTRL", "I", "settings"),
+            ("Super+Ctrl+Space", "SUPER CTRL", "SPACE", "launcher"),
+            ("Super+N", "SUPER", "N", "sidebar"),
+            ("Super+Shift+S", "SUPER SHIFT", "S", "region menu"),
+            ("Super+Ctrl+V", "SUPER CTRL", "V", "clipboard"),
+            ("Super+Y", "SUPER", "Y", "wallpaper"),
+            ("Super+X", "SUPER", "X", "session"),
+        ]
+        lines = ["# Локальные бинды Nyri. Занятые сочетания при установке пропущены."]
+        for key, modifiers, letter, command in wanted:
+            if key.lower() not in used:
+                lines.append(f"bind = {modifiers}, {letter}, exec, {ROOT}/bin/nyri {command}")
+        BINDS.write_text("\n".join(lines) + "\n")
+
+
+def lua_option(name, value):
+    key = OPTIONS[name][0].replace(":", ".")
+    stored = bool(value) if name == "shadow" else value
+    return "hl.config({ [" + json.dumps(key) + "] = " + json.dumps(stored) + " })"
+
+
+def install_lua(start=False):
+    CFG.mkdir(parents=True, exist_ok=True)
+    if not MAIN.exists():
+        MAIN.write_text("-- Hyprland configuration managed locally.\n")
+    before = MAIN.read_text()
+    after = before
+    WINDOWS.touch(exist_ok=True)
+    if start:
+        run(str(ROOT / "bin/nyri-hypr-colors"))
+        if not re.search(r'''require\s*\(?\s*["']nyri-colors["']''', after):
+            after += '\nrequire("nyri-colors")\n'
+    if not re.search(r'''require\s*\(?\s*["']nyri-windows["']''', after):
+        after += '\nrequire("nyri-windows")\n'
+    if start:
+        if not BINDS.exists():
+            occupied = json.loads(run(str(ROOT / "bin/nyri-hypr-binds"), "list"))
+            used = {frozenset(item["key"].lower().split("+")) for item in occupied}
+            defaults = [("SUPER + CTRL + I", "settings"), ("SUPER + R", "launcher"),
+                        ("SUPER + N", "sidebar"), ("SUPER + SHIFT + S", "region menu"),
+                        ("SUPER + CTRL + V", "clipboard"), ("SUPER + Y", "wallpaper"),
+                        ("SUPER + X", "session")]
+            lines = ["-- Local Nyri shortcuts; occupied combinations are preserved."]
+            for key, command in defaults:
+                if frozenset(key.lower().replace(" ", "").split("+")) not in used:
+                    lines.append(f'hl.bind({json.dumps(key)}, hl.dsp.exec_cmd({json.dumps(str(ROOT / "bin/nyri") + " " + command)}))')
+            BINDS.write_text("\n".join(lines) + "\n")
+        if not re.search(r'''require\s*\(?\s*["']nyri-binds["']''', after):
+            after += 'require("nyri-binds")\n'
+        if not re.search(r'\bqs\s+-c\s+nyri\b', after):
+            after += 'hl.on("hyprland.start", function() hl.exec_cmd("qs -c nyri") end) -- nyri-autostart\n'
+        if "nyri-session offer" not in after:
+            after += f'hl.on("hyprland.start", function() hl.exec_cmd({json.dumps(str(ROOT / "bin/nyri-session") + " offer")}) end) -- nyri-autostart\n'
+    if after != before:
+        shutil.copy2(MAIN, MAIN.with_name(f"{MAIN.name}.nyri-backup-{time.time_ns()}"))
+        MAIN.write_text(after)
+
+
+def uninstall():
+    if not MAIN.exists():
+        return
+    if LUA:
+        before = MAIN.read_text()
+        lines = [line for line in before.splitlines()
+                 if not re.match(r'''^\s*require\s*\(\s*["']nyri-(?:windows|binds|colors)["']\s*\)\s*$''', line)
+                 and not line.endswith("-- nyri-autostart")]
+        after = "\n".join(lines) + "\n"
+        if after != before:
+            shutil.copy2(MAIN, MAIN.with_name(f"{MAIN.name}.nyri-backup-{time.time_ns()}"))
+            MAIN.write_text(after)
+        return
+    before = MAIN.read_text()
+    lines = []
+    for line in before.splitlines():
+        if re.match(r'^\s*source\s*=.*nyri-(?:windows|binds|colors)\.conf\s*$', line):
+            continue
+        if re.match(r'^\s*exec-once\s*=.*(?:\bqs\s+-c\s+nyri\b|nyri-session\s+offer\b)', line):
+            continue
+        if line.startswith("# disabled by Nyri: "):
+            line = line.removeprefix("# disabled by Nyri: ")
+        if line == "# Настройки окон Nyri. Личные бинды остаются выше.":
+            continue
+        lines.append(line)
+    after = "\n".join(lines).rstrip() + "\n"
+    if after != before:
+        backup = MAIN.with_name(f"hyprland.conf.nyri-backup-{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() % 1000000:06d}")
+        shutil.copy2(MAIN, backup)
+        MAIN.write_text(after)
+        print(f"Резервная копия: {backup}")
+
+
+def option_value(name, obj):
+    kind = OPTIONS[name][1]
+    if kind is str:
+        return obj.get("str")
+    if "int" in obj:
+        return int(obj["int"])
+    if "bool" in obj:
+        return 1 if obj["bool"] else 0
+    parts = str(obj.get("css") or "").split()
+    if parts and parts[0].lstrip("-").isdigit():
+        return int(float(parts[0]))
+    parts = str(obj.get("custom") or "").split()
+    return int(parts[0]) if len(parts) == 4 and len(set(parts)) == 1 else None
+
+
+def get():
+    names = list(OPTIONS)
+    raw = run("hyprctl", "--batch", "; ".join("j/getoption " + OPTIONS[name][0] for name in names))
+    chunks = [chunk for chunk in raw.split("\n\n") if chunk.strip()]
+    if len(chunks) != len(names):
+        raise RuntimeError("Hyprland вернул неполный набор настроек")
+    values = {name: option_value(name, json.loads(chunk)) for name, chunk in zip(names, chunks)}
+    print(json.dumps(values, ensure_ascii=False))
+
+
+def set_option(name, raw):
+    if name not in OPTIONS:
+        raise ValueError("Неизвестная настройка")
+    hypr, kind, low, high = OPTIONS[name]
+    value = raw if kind is str else int(raw)
+    if kind is str and value not in ("dwindle", "master"):
+        raise ValueError("Неизвестный режим раскладки")
+    if kind is int and not low <= value <= high:
+        raise ValueError(f"Допустимо от {low} до {high}")
+    install()
+    before = WINDOWS.read_text()
+    pattern = r'^\s*' + re.escape(hypr) + r'\s*=.*$'
+    lines = [line for line in before.splitlines()
+             if not (line.endswith("-- nyri:" + name) if LUA else re.match(pattern, line))]
+    lines.append(lua_option(name, value) + " -- nyri:" + name if LUA else f"{hypr} = {value}")
+    with tempfile.NamedTemporaryFile(mode="w", dir=CFG, prefix="nyri-windows-", delete=False) as file:
+        file.write("\n".join(lines) + "\n")
+        candidate = Path(file.name)
+    os.replace(candidate, WINDOWS)
+    try:
+        if LUA:
+            result = subprocess.run(["hyprctl", "eval", lua_option(name, value)], capture_output=True, text=True, timeout=8)
+            if result.returncode or "only supported with the lua" in result.stdout.lower():
+                run("hyprctl", "keyword", hypr, str(value))
+        else:
+            run("hyprctl", "keyword", hypr, str(value))
+    except Exception:
+        WINDOWS.write_text(before)
+        raise
+    get()
+
+
+if __name__ == "__main__":
+    try:
+        command = sys.argv[1] if len(sys.argv) > 1 else "get"
+        if command == "install": install(start=True)
+        elif command == "uninstall": uninstall()
+        elif command == "get": get()
+        elif command == "set" and len(sys.argv) == 4: set_option(sys.argv[2], sys.argv[3])
+        else: raise ValueError("Использование: nyri-hypr install|get|set параметр значение")
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+        print(error, file=sys.stderr)
+        sys.exit(1)

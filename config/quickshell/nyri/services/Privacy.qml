@@ -16,9 +16,9 @@ Singleton {
     readonly property var videoStreams: Pipewire.nodes.values.filter(n => n.isStream
         && n.properties["media.class"] === "Stream/Input/Video")
     readonly property var camApps: uniq(camUsers.map(u => appOfPid(u.pid, u.app))
-        .concat(Niri.activeCasts.length ? [] : videoStreams.map(n => appOfNode(n))))
+        .concat(Compositor.activeCasts.length ? [] : videoStreams.map(n => appOfNode(n))))
 
-    readonly property var casts: Niri.activeCasts
+    readonly property var casts: Compositor.activeCasts
     readonly property var castApps: uniq(casts.map(c => appOfPid(c.pid, "")).filter(Boolean))
     readonly property bool casting: casts.length > 0
 
@@ -34,7 +34,7 @@ Singleton {
         return appOfPid(pid, n.properties["application.name"] ?? n.name ?? "");
     }
     function appOfPid(pid, fallback) {
-        const w = pid ? Niri.windowOfPid(pid) : null;
+        const w = pid ? Compositor.windowOfPid(pid) : null;
         return w ? Apps.nameFor(w.app_id) : fallback;
     }
 
@@ -42,14 +42,31 @@ Singleton {
         if (Audio.source?.audio) Audio.source.audio.muted = on;
         for (const n of micStreams) if (n.audio) n.audio.muted = on;
     }
-    readonly property bool micBlocked: Audio.micMuted
+    property bool micBlocked: false
+    function setMicBlocked(on) {
+        Quickshell.execDetached([Paths.bin + "/nyri-device-block", on ? "block" : "unblock", "mic"]);
+    }
+    FileView {
+        path: Paths.state + "/device-block.json"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
+            try {
+                const state = JSON.parse(text());
+                root.micBlocked = !!state.mic;
+            } catch (e) {}
+        }
+    }
+    Timer {
+        running: root.micBlocked
+        interval: 3000
+        repeat: true
+        onTriggered: Quickshell.execDetached([Paths.bin + "/nyri-device-block", "enforce"])
+    }
     function stopCasts() {
         for (const c of casts)
-            Niri.action("stop-cast", "--session-id", String(c.session_id));
-    }
-    function stopCamera() {
-        for (const u of camUsers) Quickshell.execDetached(["kill", String(u.pid)]);
-        for (const n of videoStreams) Quickshell.execDetached(["pw-cli", "destroy", String(n.id)]);
+            Compositor.action("stop-cast", "--session-id", String(c.session_id));
     }
     PwObjectTracker { objects: root.micStreams }
 

@@ -18,13 +18,13 @@ Surface {
 
     onOpenChanged: {
         if (open) {
-            win = Niri.focusedWindow;
+            win = Compositor.focusedWindow;
             todaySec = win ? (ScreenTime.dayTotals(new Date())[win.app_id] ?? 0) : 0;
         }
     }
 
     function act(...args) {
-        Niri.action(...args);
+        Compositor.action(...args);
         Panels.close();
     }
 
@@ -51,10 +51,10 @@ Surface {
                     radius: Shape.large
                     color: Colors.m3surfaceContainerHighest
 
-                    IconImage {
+                    AppIcon {
                         anchors.centerIn: parent
                         implicitSize: 40
-                        source: Quickshell.iconPath(Apps.iconFor(root.win?.app_id), "application-x-executable")
+                        source: Apps.iconSourceFor(root.win?.app_id, root.win?.title)
                     }
                 }
 
@@ -149,7 +149,7 @@ Surface {
                     spacing: 6
 
                     Repeater {
-                        model: Niri.workspacesOn(Niri.focusedOutput)
+                        model: Compositor.workspacesOn(Compositor.focusedOutput)
 
                         Rectangle {
                             id: ws

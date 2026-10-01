@@ -6,10 +6,12 @@ SHOTS="$HOME/Pictures/Screenshots"
 CLIPS="$HOME/Videos/Recordings"
 
 todo() { notify-send -a nyri "Nyri" "$1 — ещё не сделано"; }
+hypr() { [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; }
 
 qspid() {
     local p
-    for p in $(pgrep -x qs); do
+    # Nix and other launchers can give Quickshell a process name other than `qs`.
+    for p in $(qs -c nyri list -j 2>/dev/null | jq -r '.[].pid'); do
         if grep -qz '^NYRI_NESTED=1$' "/proc/$p/environ" 2>/dev/null; then
             [[ -n ${NYRI_NESTED:-} ]] && { echo "$p"; return; }
         else
@@ -17,7 +19,7 @@ qspid() {
         fi
     done
 }
-shell() { local pid; pid=$(qspid); [[ -n $pid ]] || return 1; qs ipc --pid "$pid" call nyri "$@" &>/dev/null; }
+shell() { local pid; pid=$(qspid); [[ -n $pid ]] || return 1; qs -c nyri ipc --pid "$pid" call nyri "$@" &>/dev/null; }
 
 menu() { fuzzel --dmenu --prompt "$1  " "${@:2}"; }
 
@@ -25,13 +27,13 @@ region() {
     local geom="${2:-}"
     case "${1:-screenshot}" in
         screenshot)
-            [[ -n $geom ]] || { niri msg action screenshot; return; }
+            [[ -n $geom ]] || { if hypr; then geom="$(slurp)" || return; else niri msg action screenshot; return; fi; }
             shot "$geom" ;;
         full)
-            niri msg action screenshot-screen ;;
+            if hypr; then shot "$(slurp -o)"; else niri msg action screenshot-screen; fi ;;
         menu)
             pkill -INT -x wf-recorder && exit 0
-            shell toggle snip || niri msg action screenshot ;;
+            shell toggle snip || { if hypr; then region screenshot; else niri msg action screenshot; fi; } ;;
         edit)
             [[ -n $geom ]] || geom="$(slurp)" || exit 0
             grim -g "$geom" - | swappy -f - ;;
@@ -145,7 +147,7 @@ session() {
     case "$pick" in
         *Заблокировать) lock ;;
         *Сон)           lock & sleep 0.5; systemctl suspend ;;
-        *Выйти)         niri msg action quit --skip-confirmation ;;
+        *Выйти)         if hypr; then hyprctl dispatch exit; else niri msg action quit --skip-confirmation; fi ;;
         *Перезагрузить) systemctl reboot ;;
         *Выключить)     systemctl poweroff ;;
     esac
@@ -154,6 +156,11 @@ session() {
 lock() { pidof hyprlock >/dev/null || hyprlock; }
 
 audio() {
+    if [[ "$1" == volumeUp || "$1" == volumeDown ]]; then
+        case "$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null)" in
+            *MUTED*) return 0 ;;
+        esac
+    fi
     case "$1" in
         volumeUp)   wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ ;;
         volumeDown) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
@@ -188,8 +195,8 @@ case "$action" in
     wallpaper)  shell toggle wallpaper || wallpaper ;;
     session)    shell toggle session || session ;;
     lock)       shell lock || lock ;;
-    cheatsheet) niri msg action show-hotkey-overlay ;;
-    switcher)   shell switcher "${1:-next}" || niri msg action focus-window-previous ;;
+    cheatsheet) if hypr; then shell settingsAt keys; else niri msg action show-hotkey-overlay; fi ;;
+    switcher)   shell switcher "${1:-next}" || { if hypr; then hyprctl dispatch cyclenext; else niri msg action focus-window-previous; fi; } ;;
     audio)      audio "$@" ;;
     brightness) brightness "$@" ;;
     mpris)      mpris "$@" ;;

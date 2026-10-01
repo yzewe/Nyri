@@ -18,16 +18,19 @@ PanelWindow {
     }
 
     screen: Panels.screen
-    visible: Osd.shown || progress > 0.001
+    visible: true
     color: "transparent"
-    readonly property string where: Config.o.osd.position === "center" ? "center"
-        : (Config.o.osd.position === "opposite") !== Panels.barBottom ? "bottom" : "top"
+    readonly property string where: {
+        const p = Config.o.osd.position;
+        if (p === "top" || p === "bottom" || p === "center") return p;
+        return (p === "opposite") !== Panels.barBottom ? "bottom" : "top";
+    }
     anchors.top: where === "top"
     anchors.bottom: where === "bottom"
     margins.top: where === "top" ? (Panels.barBottom ? 24 : 12 + 40 + 8) : 0
     margins.bottom: where === "bottom" ? (Panels.barBottom ? 12 + 40 + 8 : 32) : 0
     exclusionMode: ExclusionMode.Ignore
-    implicitWidth: card.full + 32
+    implicitWidth: Osd.kind === "layout" ? 232 : Osd.kind === "mic" ? 320 : card.full + 32
     implicitHeight: card.height + 32
     mask: Region {}
 
@@ -45,13 +48,14 @@ PanelWindow {
         case "caps":
             return { icon: "keyboard_capslock", text: Toggles.capsLock ? "Caps Lock включён" : "Caps Lock выключен", dim: !Toggles.capsLock };
         case "layout":
-            return { icon: "keyboard", text: Niri.layoutNames[Niri.layoutIndex] ?? "" };
+            return { icon: "keyboard", text: Compositor.layoutNames[Compositor.layoutIndex] ?? "" };
         }
         return { icon: "info" };
     }
 
     Card {
         id: card
+        visible: Osd.kind !== "layout" && Osd.kind !== "mic"
         readonly property real full: row.implicitWidth + 8 + 20
         y: 16 + (1 - root.progress) * (root.where === "bottom" ? 24 : -24)
         width: 56 + (full - 56) * Math.max(0, root.progress)
@@ -117,6 +121,37 @@ PanelWindow {
                 text: root.spec.text ?? ""
             }
             }
+        }
+    }
+
+    Rectangle {
+        visible: Osd.kind === "layout" || Osd.kind === "mic"
+        readonly property real fullWidth: layoutText.implicitWidth + 66
+        x: (root.width - width) / 2
+        y: 16 + (1 - root.progress) * (root.where === "bottom" ? 24 : -24)
+        width: 56 + (fullWidth - 56) * Math.max(0, Math.min(1, root.progress))
+        height: 56
+        radius: 28
+        color: Colors.m3surfaceContainerHigh
+        opacity: Math.max(0, Math.min(1, root.progress * 2))
+        clip: true
+
+        MIcon {
+            x: 17 - Math.max(0, Math.min(1, root.progress))
+            anchors.verticalCenter: parent.verticalCenter
+            icon: root.spec.icon
+            size: 22
+            color: Colors.m3primary
+        }
+        FlowText {
+            id: layoutText
+            x: 50
+            width: implicitWidth
+            anchors.verticalCenter: parent.verticalCenter
+            textStyle: Type.titleMedium
+            animate: (Osd.kind === "layout" || Osd.kind === "mic") && root.progress > 0.95
+            opacity: Math.max(0, Math.min(1, (root.progress - 0.15) * 1.4))
+            text: root.spec.text ?? ""
         }
     }
 }

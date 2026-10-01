@@ -6,14 +6,109 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property var all: DesktopEntries.applications.values
-        .filter(e => !e.noDisplay)
-    property var counts: ({})
+    function launcherPriority(entry) {
+        const id = (entry.id ?? "").toLowerCase();
+        if (id.startsWith("userapp-") || id.includes("url-handler")) return 0;
+        return 10 + (entry.icon ? 1 : 0);
+    }
 
-    function iconFor(appId) {
+    function launcherKey(name) {
+        const key = name.toLowerCase();
+        return key.startsWith("ayugram") ? "ayugram" : key;
+    }
+
+    readonly property var all: {
+        const byName = new Map();
+        for (const entry of DesktopEntries.applications.values) {
+            const id = (entry.id ?? "").toLowerCase();
+            const name = (entry.name ?? "").trim();
+            if (entry.noDisplay || !name || id.startsWith("userapp-") ||
+                (id.includes("ayugram") && name.toLowerCase().startsWith("quit ")))
+                continue;
+            const key = launcherKey(name);
+            const previous = byName.get(key);
+            if (!previous || launcherPriority(entry) > launcherPriority(previous))
+                byName.set(key, entry);
+        }
+        return [...byName.values()];
+    }
+    property var counts: ({})
+    property var iconFiles: ({})
+    function loadIcons(contents) {
+        try { iconFiles = JSON.parse(contents); } catch (e) {}
+    }
+    Component.onCompleted: loadIcons(iconsFile.text())
+
+    Process {
+        command: [Paths.bin + "/nyri-icon-index"]
+        running: true
+        onExited: iconsFile.reload()
+    }
+    FileView {
+        id: iconsFile
+        path: Paths.state + "/icons.json"
+        blockLoading: true
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.loadIcons(text())
+    }
+
+    function iconFor(appId, title) {
         if (appId === "org.quickshell")
             return "preferences-system";
-        return DesktopEntries.heuristicLookup(appId)?.icon ?? appId ?? "";
+        const id = (appId ?? "").toLowerCase();
+        if (title) {
+            const name = title.toLowerCase().trim();
+            const entry = all.find(e => {
+                const appName = (e.name ?? "").toLowerCase();
+                return appName.length > 3 && name.includes(appName);
+            });
+            if (entry?.icon) return entry.icon;
+            if (name.includes("termius")) return "termius";
+            if (name.includes("ayugram")) return "telegram";
+        }
+        const icon = DesktopEntries.heuristicLookup(appId)?.icon;
+        if (icon) return icon;
+        const entry = all.find(e => {
+            const entryId = (e.id ?? "").toLowerCase().replace(/\.desktop$/, "");
+            return entryId === id || entryId.endsWith("." + id) || id.endsWith("." + entryId);
+        });
+        if (entry?.icon) return entry.icon;
+        if (id.includes("termius")) return "termius";
+        if (id.includes("ayugram")) return "telegram";
+        return appId || "application-x-executable";
+    }
+
+    function fileForIcon(icon) {
+        if (!icon) return "";
+        const raw = String(icon);
+        if (raw.startsWith("file:") || raw.startsWith("image:")) return raw;
+        if (raw.startsWith("/")) return "file://" + raw;
+        if (raw.startsWith("qrc:/nix/store/")) return "file://" + raw.slice(4);
+        const key = raw.toLowerCase().replace(/-symbolic$/, "");
+        const file = iconFiles[key] || iconFiles[raw.toLowerCase()];
+        if (file) return "file://" + file;
+        const path = Quickshell.iconPath(raw);
+        if (!path || path === raw) return "";
+        if (path.startsWith("qrc:/nix/store/")) return "file://" + path.slice(4);
+        if (path.startsWith("/")) return "file://" + path;
+        if (path.startsWith("file:")) return path;
+        return "";
+    }
+
+    function iconSourceFor(appId, title) {
+        const icon = iconFor(appId, title);
+        if (icon.toLowerCase() === "termius-app" || icon.toLowerCase() === "termius")
+            return "file://" + Quickshell.env("HOME") + "/.local/share/icons/hicolor/scalable/apps/termius-app.svg";
+        if (icon.startsWith("/")) return "file://" + icon;
+        if (icon.startsWith("qrc:/nix/store/")) return "file://" + icon.slice(4);
+        if (icon.startsWith("file:") || icon.startsWith("image:")) return icon;
+        if (icon === "application-x-executable") return "";
+        const file = iconFiles[icon.toLowerCase()];
+        if (file) return "file://" + file;
+        const path = Quickshell.iconPath(icon);
+        return path.startsWith("qrc:/nix/store/") ? "file://" + path.slice(4) : path;
     }
 
     function nameFor(appId) {

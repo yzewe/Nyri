@@ -15,22 +15,30 @@ Singleton {
         return roles[name] ?? fallback;
     }
 
-    FileView {
-        path: (Quickshell.env("NYRI_STATE") || Quickshell.env("HOME") + "/.local/state/nyri") + "/theme.json"
-        watchChanges: true
-        onFileChanged: reload()
-        onLoaded: {
-            try {
-                const data = JSON.parse(text());
-                root.roles = data.colors;
-                root.wallpaper = data.wallpaper;
-                root.mode = data.mode;
-                root.scheme = data.scheme ?? "scheme-content";
-            } catch (e) {
-                console.warn("theme.json unreadable:", e);
-            }
+    function loadTheme(contents) {
+        try {
+            const data = JSON.parse(contents);
+            root.roles = data.colors ?? {};
+            root.wallpaper = data.wallpaper ?? "";
+            root.mode = data.mode ?? "dark";
+            root.scheme = data.scheme ?? "scheme-content";
+            const bin = (Quickshell.env("HOME") || "") + "/nyri/bin/nyri-greetd";
+            Quickshell.execDetached([bin, "publish"]);
+        } catch (e) {
+            console.warn("theme.json unreadable:", e);
         }
     }
+
+    FileView {
+        id: themeFile
+        path: (Quickshell.env("NYRI_STATE") || Quickshell.env("HOME") + "/.local/state/nyri") + "/theme.json"
+        blockLoading: true
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.loadTheme(text())
+    }
+
+    Component.onCompleted: loadTheme(themeFile.text())
 
     property color m3primary: role("primary", "#ffb68c")
     property color m3onPrimary: role("on_primary", "#532200")

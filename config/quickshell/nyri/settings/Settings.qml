@@ -13,6 +13,7 @@ Scope {
     readonly property var pages: [
         { id: "look",   icon: "palette",             label: "Оформление",            short: "Вид" },
         { id: "desk",   icon: "dashboard_customize", label: "Стол и обои",           short: "Стол" },
+        { id: "windows", icon: "grid_view",          label: "Окна",                  short: "Окна" },
         { id: "bar",    icon: "toolbar",             label: "Панель",                short: "Панель" },
         { id: "dock",   icon: "dock_to_bottom",      label: "Док",                   short: "Док" },
         { id: "notif",  icon: "notifications",       label: "Уведомления",  short: "Уведомления" },
@@ -20,6 +21,7 @@ Scope {
         { id: "power",  icon: "electric_bolt",        label: "Питание и сон",         short: "Питание" },
         { id: "usage",  icon: "hourglass",       label: "Экранное время",        short: "Время" },
         { id: "search", icon: "search",              label: "Поиск",                 short: "Поиск" },
+        { id: "keys",   icon: "keyboard",            label: "Клавиши",               short: "Клавиши" },
         { id: "about",  icon: "info",                label: "Система",               short: "Система" }
     ]
 
@@ -44,7 +46,11 @@ Scope {
 
             Shortcut {
                 sequence: "Escape"
-                onActivated: Panels.settingsOpen = false
+                onActivated: {
+                    if (pageLoader.item && pageLoader.item.closeOverlay && pageLoader.item.closeOverlay())
+                        return;
+                    Panels.settingsOpen = false;
+                }
             }
 
             function step(n) {
@@ -170,7 +176,7 @@ Scope {
                     height: nav.height - y - 12
                     contentHeight: navList.height + 16
                     clip: true
-                    Overscroll { flick: navFlick }
+                    Overscroll { flick: navFlick; step: 2.4; touchpad: 2.2; coast: 0.55; coastMax: 1600; glideStiff: 520 }
 
                 Rectangle {
                     id: indicator
@@ -248,8 +254,9 @@ Scope {
             }
             }
 
-            ClippingRectangle {
+            Rectangle {
                 id: pageBox
+                clip: true
                 x: nav.width
                 y: 12
                 width: parent.width - nav.width - 12
@@ -267,7 +274,7 @@ Scope {
                     topMargin: pageBox.largeH
                     bottomMargin: 28
                     contentHeight: pageLoader.item?.implicitHeight ?? 0
-                    Overscroll { flick: flick }
+                    Overscroll { flick: flick; step: 2.8; touchpad: 2.4; coast: 0.7; coastMax: 2400; glideStiff: 560 }
 
                     Loader {
                         id: pageLoader
@@ -326,7 +333,7 @@ Scope {
                         clip: true
                         spacing: 4
                         model: win.hits
-                        Overscroll { flick: results }
+                        Overscroll { flick: results; step: 2.8; touchpad: 2.4; coast: 0.7; coastMax: 2400; glideStiff: 560 }
                         delegate: Rectangle {
                             id: hit
                             required property var modelData

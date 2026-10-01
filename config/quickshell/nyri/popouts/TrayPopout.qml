@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
@@ -13,6 +14,7 @@ Surface {
     keyboard: false
 
     readonly property var items: SystemTray.items.values.slice(4)
+    TrayContextMenu { id: contextMenu; hostWindow: root }
 
     Popout {
         progress: root.progress
@@ -40,8 +42,7 @@ Surface {
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
                         onClicked: m => {
                             if (m.button === Qt.RightButton || cell.modelData.onlyMenu) {
-                                const p = cell.mapToItem(null, m.x, m.y);
-                                cell.modelData.display(root, p.x, p.y);
+                                contextMenu.openFor(cell.modelData, cell);
                             } else {
                                 cell.modelData.activate();
                                 Panels.close();
@@ -55,7 +56,16 @@ Surface {
                         width: 44
                         height: 44
                         radius: 22
-                        color: Colors.m3surfaceContainerHighest
+                        color: Colors.mode === "light" ? Colors.m3inverseSurface : Colors.m3surfaceContainerHighest
+
+                        RectangularShadow {
+                            anchors.fill: parent
+                            radius: parent.radius
+                            blur: 7
+                            offset.y: 1
+                            color: Qt.alpha(Colors.m3shadow, 0.22)
+                            z: -1
+                        }
 
                         IconImage {
                             anchors.centerIn: parent

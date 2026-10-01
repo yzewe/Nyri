@@ -50,7 +50,7 @@ Row {
                 font.variableAxes: ({ "wght": root.weight, "ROND": root.textStyle.rond ?? 0 })
                 font.features: ({ "tnum": 1 })
                 font.hintingPreference: Font.PreferNoHinting
-                renderType: root.pixelSize >= 32 ? Text.CurveRendering : Text.NativeRendering
+                renderType: Text.QtRendering
                 color: root.color
             }
 

@@ -10,9 +10,10 @@ Singleton {
     property var days: ({})
     property string current: ""
     property real since: 0
+    property bool loaded: false
 
     readonly property bool away: idle.isIdle || Lock.locked
-    readonly property string activeApp: Panels.nested || away || !Config.o.screenTime.enabled ? "" : (Niri.focusedWindow?.app_id ?? "")
+    readonly property string activeApp: Panels.nested || away || !Config.o.screenTime.enabled ? "" : (Compositor.focusedWindow?.app_id ?? "")
 
     function key(d) {
         return Qt.formatDate(d, "yyyy-MM-dd");
@@ -41,7 +42,7 @@ Singleton {
     }
 
     function save() {
-        if (Panels.nested)
+        if (Panels.nested || !loaded)
             return;
         const cutoff = key(new Date(Date.now() - 60 * 86400000));
         const kept = {};
@@ -105,6 +106,8 @@ Singleton {
         atomicWrites: true
         onLoaded: {
             try { root.days = JSON.parse(text()); } catch (e) {}
+            root.loaded = true;
         }
+        onLoadFailed: error => { if (error === FileViewError.FileNotFound) root.loaded = true; }
     }
 }

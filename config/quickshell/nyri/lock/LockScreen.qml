@@ -139,7 +139,7 @@ Scope {
                 anchors.fill: parent
                 file: surface.sceneFile
                 pace: 0.5
-                running: Lock.locked && !root.awake && !root.checking && !root.unlocking
+                running: Lock.locked && !root.awake && !root.checking && !root.unlocking && !Config.o.lock.blur
                 visible: surface.live && !Config.o.lock.blur
                 opacity: surface.e
                 scale: 1 + 0.06 * surface.e
@@ -148,19 +148,18 @@ Scope {
             MultiEffect {
                 anchors.fill: parent
                 visible: !surface.live || Config.o.lock.blur
-                source: surface.live ? liveScene : wall
+                source: surface.live && !Config.o.lock.blur ? liveScene : wall
                 blurEnabled: Config.o.lock.blur
                 blur: 1
                 blurMax: 64
                 autoPaddingEnabled: false
                 opacity: surface.e
-                scale: 1 + 0.06 * surface.e
             }
 
             Rectangle {
                 anchors.fill: parent
-                color: Colors.m3scrim
-                opacity: (0.35 + 0.15 * surface.wc) * surface.e
+                color: Colors.mode === "light" ? Colors.m3surface : Colors.m3scrim
+                opacity: ((Colors.mode === "light" ? 0.62 : 0.35) + 0.14 * surface.wc) * surface.e
             }
 
             MouseArea {
@@ -191,13 +190,14 @@ Scope {
                 readonly property real awakeScale: 0.5
                 readonly property real restScale: row ? 0.72 : 1
 
-                readonly property real groupH: height * scale + 12 + glance.height + (40 + auth.height) * surface.wc
+                readonly property real layoutScale: restScale + (awakeScale - restScale) * surface.w
+                readonly property real groupH: height * layoutScale + 12 + glance.height + (40 + auth.height) * surface.wc
 
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: stackW + (rowW - stackW) * t
                 height: (2 * lh - overlap) + (lh - (2 * lh - overlap)) * t
-                y: (surface.height - groupH) / 2
-                scale: (restScale + (awakeScale - restScale) * surface.w) * (1 + 0.35 * (1 - surface.e))
+                y: (surface.height - groupH) / 2 + (1 - surface.e) * 28
+                scale: layoutScale
                 transformOrigin: Item.Top
                 opacity: surface.e * surface.dim
 
@@ -347,7 +347,7 @@ Scope {
                     anchors.verticalCenter: parent.verticalCenter
                     textStyle: Type.labelLargeEmph
                     color: Colors.m3onSurfaceVariant
-                    text: Niri.layoutShort
+                    text: Compositor.layoutShort
                 }
                 Row {
                     anchors.verticalCenter: parent.verticalCenter
@@ -409,8 +409,12 @@ Scope {
                     }
 
                     PasswordDots {
-                        anchors.centerIn: parent
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: 56
+                        width: go.x - x - 10
+                        height: size
                         length: root.buffer.length
+                        size: 14
                     }
 
                     FlowText {

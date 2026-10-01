@@ -48,6 +48,7 @@ matugen -c "$config" image "$wall" \
     }' > "$STATE/theme.json.tmp"
 
 mv "$STATE/theme.json.tmp" "$STATE/theme.json"
+[[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && "$NYRI/bin/nyri-hypr-colors" || true
 echo "$wall" > "$STATE/wallpaper"
 echo "$mode" > "$STATE/mode"
 echo "$scheme" > "$STATE/scheme"

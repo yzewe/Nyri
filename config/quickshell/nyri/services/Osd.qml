@@ -24,8 +24,8 @@ Singleton {
 
     property bool layoutReady: false
     Connections {
-        target: Niri
-        function onLayoutIndexChanged() {
+        target: Compositor
+        function onLayoutShortChanged() {
             if (root.layoutReady)
                 root.show("layout");
             root.layoutReady = true;

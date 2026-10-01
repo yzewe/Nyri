@@ -10,23 +10,27 @@ Scope {
     readonly property bool battery: UPower.onBattery
 
     readonly property var cfg: Config.o.idle
-    readonly property int lockMinutes: battery ? cfg.lockBattery : cfg.lockAc
+    readonly property int screenMinutes: battery ? cfg.screenBattery : cfg.screenAc
+    readonly property int suspendMinutes: battery ? cfg.suspendBattery : cfg.suspendAc
 
     IdleMonitor {
-        enabled: root.cfg.screenOff > 0
-        timeout: root.cfg.screenOff * 60
-        onIsIdleChanged: if (isIdle) Quickshell.execDetached(["niri", "msg", "action", "power-off-monitors"])
+        enabled: root.screenMinutes > 0
+        timeout: root.screenMinutes * 60
+        onIsIdleChanged: {
+            if (Compositor.isHyprland) Quickshell.execDetached(["hyprctl", "dispatch", "dpms", isIdle ? "off" : "on"]);
+            else if (isIdle) Quickshell.execDetached(["niri", "msg", "action", "power-off-monitors"]);
+        }
     }
 
     IdleMonitor {
-        enabled: root.lockMinutes > 0 && !Panels.nested
-        timeout: root.lockMinutes * 60
+        enabled: root.cfg.lock > 0 && !Panels.nested
+        timeout: root.cfg.lock * 60
         onIsIdleChanged: if (isIdle) Lock.lock()
     }
 
     IdleMonitor {
-        enabled: root.battery && !Panels.nested && root.cfg.suspendBattery > 0
-        timeout: root.cfg.suspendBattery * 60
+        enabled: !Panels.nested && root.suspendMinutes > 0
+        timeout: root.suspendMinutes * 60
         onIsIdleChanged: if (isIdle) Quickshell.execDetached(["systemctl", "suspend"])
     }
 
@@ -40,7 +44,7 @@ Scope {
     }
 
     Process {
-        running: !Panels.nested && root.cfg.lockOnLogin
+        running: !Panels.nested && root.cfg.lockOnLogin && !Compositor.isHyprland
         command: ["sh", "-c", "m=\"$XDG_RUNTIME_DIR/nyri-locked-once\"; [ -e \"$m\" ] && exit 1; touch \"$m\""]
         onExited: code => { if (code === 0) Lock.lock() }
     }

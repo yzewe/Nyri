@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Put the theme wallpaper up before Quickshell has finished starting."""
+import json
+import os
+import shutil
+import time
+from pathlib import Path
+
+
+def wallpaper():
+    home = Path(os.environ.get("HOME") or "")
+    candidates = [
+        home / ".local/state/nyri/theme.json",
+        Path("/var/lib/nyri/theme.json"),
+    ]
+    state = os.environ.get("XDG_STATE_HOME")
+    if state:
+        candidates.insert(0, Path(state) / "nyri/theme.json")
+    for path in candidates:
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        wall = data.get("wallpaper") if isinstance(data, dict) else ""
+        if isinstance(wall, str) and wall and "\n" not in wall and os.path.isfile(wall):
+            return wall
+    return ""
+
+
+def hypr_ready():
+    signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    if not signature:
+        return False
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    sock = Path(runtime) / "hypr" / signature / ".socket.sock"
+    if sock.exists():
+        return True
+    time.sleep(0.05)
+    return sock.exists()
+
+
+def main():
+    wall = wallpaper()
+    if not wall:
+        return 0
+    if hypr_ready():
+        hyprpaper = shutil.which("hyprpaper")
+        if hyprpaper:
+            runtime = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+            cfg = Path(runtime) / "nyri-hyprpaper.conf"
+            cfg.write_text(f"preload = {wall}\nwallpaper = ,{wall}\nsplash = false\n")
+            os.execvp(hyprpaper, [hyprpaper, "-c", str(cfg)])
+    swaybg = shutil.which("swaybg")
+    if swaybg:
+        os.execvp(swaybg, [swaybg, "-i", wall, "-m", "fill"])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

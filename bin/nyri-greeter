@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Open the Nyri login screen. --preview draws it in the current session and does not log in.
+set -euo pipefail
+here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+if [[ ${1:-} == --preview ]]; then
+    export NYRI_GREETER_PREVIEW=1
+    shift
+fi
+qs_bin="$(command -v qs || true)"
+if [[ -z $qs_bin ]]; then
+    echo "qs не найден" >&2
+    exit 1
+fi
+if [[ -f $here/../config/quickshell/nyri-greeter/shell.qml ]]; then
+    export NYRI_GREETD="${NYRI_GREETD:-$here/nyri-greetd}"
+    exec "$qs_bin" -p "$here/../config/quickshell/nyri-greeter" "$@"
+fi
+export NYRI_GREETD="${NYRI_GREETD:-/usr/local/bin/nyri-greetd}"
+exec "$qs_bin" -p /usr/local/share/nyri/greeter "$@"

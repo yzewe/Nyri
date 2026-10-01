@@ -16,7 +16,7 @@ Surface {
     readonly property var actions: [
         { key: "L", label: "Блокировка",  icon: "lock",               shape: "cookie9Sided", run: () => Lock.lock() },
         { key: "S", label: "Сон",         icon: "bedtime",            shape: "clover4Leaf",  run: () => { Lock.lock(); system(["systemctl", "suspend"]); } },
-        { key: "E", label: "Выйти",       icon: "logout",             shape: "sunny",        run: () => system(["niri", "msg", "action", "quit", "--skip-confirmation"], true) },
+        { key: "E", label: "Выйти",       icon: "logout",             shape: "sunny",        run: () => system(Compositor.isHyprland ? ["hyprctl", "dispatch", "exit"] : ["niri", "msg", "action", "quit", "--skip-confirmation"], true) },
         { key: "R", label: "Перезагрузка", icon: "restart_alt",       shape: "cookie12Sided", run: () => system(["systemctl", "reboot"], true) },
         { key: "P", label: "Выключение",  icon: "power_settings_new", shape: "softBurst",    run: () => system(["systemctl", "poweroff"], true) }
     ]

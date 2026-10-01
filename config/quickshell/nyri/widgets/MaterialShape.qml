@@ -10,8 +10,10 @@ Canvas {
     property color color: Colors.m3primary
     property real progress: 1
 
+    property bool live: false
     property var current: polygon(shape)
     property var morph: new Morph.Morph(current, current)
+    Component.onCompleted: live = true
 
     function polygon(name) {
         const make = Shapes["get" + name.charAt(0).toUpperCase() + name.slice(1)];
@@ -22,6 +24,13 @@ Canvas {
 
     onShapeChanged: {
         const next = polygon(shape);
+        if (!live) {
+            current = next;
+            morph = new Morph.Morph(next, next);
+            progress = 1;
+            requestPaint();
+            return;
+        }
         morph = new Morph.Morph(current, next);
         current = next;
         morphAnim.restart();

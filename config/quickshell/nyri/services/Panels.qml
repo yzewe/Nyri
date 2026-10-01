@@ -19,7 +19,7 @@ Singleton {
     readonly property bool nested: Quickshell.env("NYRI_NESTED") === "1"
 
     readonly property var screen: {
-        const name = Niri.focusedOutput;
+        const name = Compositor.focusedOutput;
         return Quickshell.screens.find(s => s.name === name) ?? Quickshell.screens[0];
     }
 

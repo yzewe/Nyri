@@ -51,9 +51,9 @@ Surface {
         return s.charAt(0).toUpperCase() + s.slice(1);
     }
     function openAppNow(app) {
-        const w = Object.values(Niri.windows).find(w => w.app_id === app);
+        const w = Object.values(Compositor.windows).find(w => w.app_id === app);
         Panels.close();
-        if (w) Niri.action("focus-window", "--id", String(w.id));
+        if (w) Compositor.action("focus-window", "--id", String(w.id));
         else {
             const e = DesktopEntries.heuristicLookup(app);
             if (e) Apps.launch(e);
@@ -303,11 +303,11 @@ Surface {
                                 onClicked: root.openApp = app.unfolded ? "" : app.modelData[0]
                             }
 
-                            IconImage {
+                            AppIcon {
                                 y: 12
                                 x: 4
                                 implicitSize: 32
-                                source: Quickshell.iconPath(Apps.iconFor(app.modelData[0]), "application-x-executable")
+                                source: Apps.iconSourceFor(app.modelData[0])
                             }
 
                             MText {

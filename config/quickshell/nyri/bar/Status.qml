@@ -60,13 +60,15 @@ Island {
         pill: root.chips
         segment: root.seg("layout")
         visible: Config.o.bar.layout
-        onClicked: Niri.action("switch-layout", "next")
+        onClicked: Compositor.action("switch-layout", "next")
 
         MText {
             anchors.verticalCenter: parent.verticalCenter
+            width: 24
+            horizontalAlignment: Text.AlignHCenter
             textStyle: Type.labelLargeEmph
             color: Colors.m3onSurfaceVariant
-            text: Niri.layoutShort
+            text: Compositor.layoutShort
         }
 
         Reveal {
@@ -95,7 +97,7 @@ Island {
         segment: root.seg("volume")
         visible: Audio.sink !== null && Config.o.bar.volume
         onClicked: m => m.button === Qt.RightButton ? Panels.toggleFrom("control", root) : Audio.toggleMute()
-        onWheel: event => Audio.setVolume(Audio.volume + (event.angleDelta.y > 0 ? 0.05 : -0.05))
+        onWheel: event => { if (!Audio.muted) Audio.setVolume(Audio.volume + (event.angleDelta.y > 0 ? 0.05 : -0.05)); }
 
         MIcon {
             anchors.verticalCenter: parent.verticalCenter
@@ -108,7 +110,7 @@ Island {
             anchors.verticalCenter: parent.verticalCenter
             textStyle: Type.labelLarge
             color: Colors.m3onSurfaceVariant
-            text: String(Math.round(Audio.volume * 100))
+            text: String(Audio.muted ? 0 : Math.round(Audio.volume * 100))
         }
     }
 

@@ -6,6 +6,14 @@ import Quickshell.Io
 Singleton {
     id: root
 
+    function list(value) {
+        if (Array.isArray(value)) return value;
+        try {
+            const parsed = JSON.parse(JSON.stringify(value));
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) { return []; }
+    }
+
     readonly property alias o: adapter
 
     FileView {
@@ -26,7 +34,7 @@ Singleton {
                 property bool layout: true
                 property bool date: true
                 property var left: ["launcher", "workspaces", "title"]
-                property var center: ["clock", "live"]
+                property var center: ["live"]
                 property var right: ["tray", "status", "control"]
                 property string style: "islands"
                 property string position: "top"
@@ -52,12 +60,14 @@ Singleton {
 
             property JsonObject control: JsonObject {
                 property var hidden: []
+                property var hiddenCards: []
             }
 
             property JsonObject idle: JsonObject {
-                property int screenOff: 5
-                property int lockAc: 10
-                property int lockBattery: 15
+                property int screenAc: 5
+                property int screenBattery: 5
+                property int lock: 10
+                property int suspendAc: 0
                 property int suspendBattery: 20
                 property bool lockOnLogin: true
             }

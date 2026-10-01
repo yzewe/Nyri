@@ -7,7 +7,7 @@ Island {
     id: root
 
     required property string output
-    readonly property var list: Niri.workspacesOn(output)
+    readonly property var list: Compositor.workspacesOn(output)
 
     readonly property string look: Config.o.bar.workspaces
     padding: look === "numbers" ? 6 : 14
@@ -23,7 +23,7 @@ Island {
             readonly property var ws: root.list[index]
             readonly property bool active: ws?.is_active ?? false
             readonly property bool urgent: ws?.is_urgent ?? false
-            readonly property bool occupied: ws ? Niri.windowCount(ws.id) > 0 : false
+            readonly property bool occupied: ws ? Compositor.windowCount(ws.id) > 0 : false
 
             anchors.verticalCenter: parent.verticalCenter
             width: w.value
@@ -68,13 +68,13 @@ Island {
                 anchors.margins: -8
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: Niri.action("focus-workspace", String(dot.ws.idx))
+                onClicked: Compositor.action("focus-workspace", String(dot.ws.idx))
             }
         }
     }
 
     WheelHandler {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-        onWheel: event => Niri.action(event.angleDelta.y < 0 ? "focus-workspace-down" : "focus-workspace-up")
+        onWheel: event => Compositor.action(event.angleDelta.y < 0 ? "focus-workspace-down" : "focus-workspace-up")
     }
 }

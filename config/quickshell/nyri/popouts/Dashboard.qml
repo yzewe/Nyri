@@ -244,12 +244,11 @@ Surface {
                                 width: parent.width
                                 spacing: 10
 
-                                Image {
+                                AppIcon {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 24
                                     height: 24
-                                    sourceSize: Qt.size(48, 48)
-                                    source: Quickshell.iconPath(Apps.iconFor(appRow.modelData[0]), "application-x-executable")
+                                    source: Apps.iconSourceFor(appRow.modelData[0])
                                 }
 
                                 MText {

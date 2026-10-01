@@ -1,10 +1,12 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
 import qs.theme
 import qs.services
 import qs.widgets
+import qs.popouts
 
 Island {
     id: root
@@ -16,6 +18,8 @@ Island {
 
     padding: 4
     spacing: 0
+
+    TrayContextMenu { id: contextMenu; hostWindow: root.barWindow }
 
     Repeater {
         model: ScriptModel { values: root.items.slice(0, root.inline) }
@@ -64,13 +68,36 @@ Island {
         Component.onCompleted: Qt.callLater(() => chip.born = true)
         SpringValue { id: pop; target: chip.born ? 1 : 0; damping: 0.55; stiffness: 420 }
 
-        IconImage {
+        Item {
             anchors.verticalCenter: parent.verticalCenter
-            implicitSize: 18
-            source: chip.item.icon
+            width: 28
+            height: 28
             scale: Math.max(0, pop.value)
             rotation: (1 - pop.value) * -120
             opacity: Math.min(1, Math.max(0, pop.value))
+
+            RectangularShadow {
+                anchors.fill: plate
+                radius: plate.radius
+                blur: 6
+                offset.y: 1
+                color: Qt.alpha(Colors.m3shadow, 0.25)
+                visible: plate.visible
+            }
+
+            Rectangle {
+                id: plate
+                anchors.fill: parent
+                radius: 14
+                visible: Colors.mode === "light"
+                color: Colors.m3inverseSurface
+            }
+
+            IconImage {
+                anchors.centerIn: parent
+                implicitSize: 18
+                source: chip.item.icon
+            }
         }
 
         onClicked: mouse => {
@@ -79,8 +106,7 @@ Island {
             } else if (mouse.button === Qt.MiddleButton) {
                 chip.item.secondaryActivate();
             } else if (chip.item.hasMenu) {
-                const p = chip.mapToItem(null, 0, chip.height + 8);
-                chip.item.display(chip.window, p.x, p.y);
+                contextMenu.openFor(chip.item, chip);
             }
         }
         onWheel: event => chip.item.scroll(event.angleDelta.y, false)

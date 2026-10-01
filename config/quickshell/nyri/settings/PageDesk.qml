@@ -11,13 +11,17 @@ Column {
 
     readonly property var cfg: Config.o.desktop
 
-    ClippingRectangle {
+    Rectangle {
         id: hero
         width: parent.width
         height: Math.round(width * 0.42)
         radius: Shape.extraLarge
         color: Colors.m3surfaceContainerHighest
 
+        ClippingRectangle {
+            anchors.fill: parent
+            radius: hero.radius
+            color: hero.color
         Image {
             anchors.fill: parent
             source: Colors.wallpaper ? "file://" + Colors.wallpaper : ""
@@ -27,7 +31,6 @@ Column {
             scale: heroHover.hovered ? 1.04 : 1
             Behavior on scale { SpatialAnim { speed: "slow" } }
         }
-        HoverHandler { id: heroHover }
 
         Rectangle {
             anchors.bottom: parent.bottom
@@ -38,6 +41,8 @@ Column {
                 GradientStop { position: 1; color: Qt.alpha(Colors.m3scrim, 0.45) }
             }
         }
+        }
+        HoverHandler { id: heroHover }
 
         Row {
             anchors.left: parent.left

@@ -223,7 +223,7 @@ Column {
     ListGroup {
         width: parent.width
         title: "Программы"
-        SettingRow { icon: "grid_view"; title: "niri"; subtitle: (page.info.niri ?? "").replace(/^niri\s*/i, "").replace(/\s*\(.*\)\s*$/, "") }
+        SettingRow { icon: "grid_view"; title: Compositor.isHyprland ? "Hyprland" : "niri"; subtitle: (page.info.compositor ?? page.info.niri ?? "").replace(/^(?:niri|Hyprland)\s*/i, "").replace(/\s*\(.*\)\s*$/, "") }
         SettingRow { icon: "widgets"; title: "Quickshell"; subtitle: (page.info.quickshell ?? "").replace(/^quickshell\s*/i, "").replace(/\s*\(.*\)\s*$/, "") }
         SettingRow { icon: "terminal"; title: "Ядро"; subtitle: page.info.kernel ?? "" }
     }
@@ -290,7 +290,10 @@ Column {
             icon: "keyboard"
             title: "Горячие клавиши"
             clickable: true
-            onClicked: Quickshell.execDetached(["niri", "msg", "action", "show-hotkey-overlay"])
+            onClicked: {
+                if (Compositor.isHyprland) Panels.openSettings("keys");
+                else Quickshell.execDetached(["niri", "msg", "action", "show-hotkey-overlay"]);
+            }
         }
         SettingRow {
             icon: "folder_open"

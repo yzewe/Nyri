@@ -28,9 +28,11 @@ Island {
         color: Colors.m3primaryContainer
         Image {
             anchors.fill: parent
-            source: root.player?.trackArtUrl ?? ""
+            source: Media.art
             fillMode: Image.PreserveAspectCrop
-            sourceSize: Qt.size(56, 56)
+            smooth: true
+            mipmap: true
+            asynchronous: true
         }
     }
     FlowText {

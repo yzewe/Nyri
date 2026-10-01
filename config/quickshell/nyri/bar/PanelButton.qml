@@ -12,8 +12,17 @@ Item {
     property real intro: 0
     scale: intro
     SequentialAnimation on intro {
+        id: introAnim
+        running: false
         PauseAnimation { duration: 480 }
         SpatialAnim { from: 0; to: 1; speed: "slow" }
+    }
+    function playIntro() { intro = 0; introAnim.restart(); }
+    function holdIntro() { introAnim.stop(); intro = 0; }
+    Component.onCompleted: if (!Lock.locked) playIntro()
+    Connections {
+        target: Lock
+        function onLockedChanged() { if (Lock.locked) root.holdIntro(); else root.playIntro(); }
     }
 
     readonly property bool open: Panels.current === "control"

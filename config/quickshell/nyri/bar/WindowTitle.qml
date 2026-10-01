@@ -10,7 +10,7 @@ Island {
 
     property real maxTextWidth: 360
     property real room: Infinity
-    readonly property var win: Niri.focusedWindow
+    readonly property var win: Compositor.focusedWindow
     readonly property var entry: win ? DesktopEntries.heuristicLookup(win.app_id) : null
 
     widthSpeed: "fast"
@@ -25,22 +25,16 @@ Island {
         onClicked: Panels.toggleFrom("window", root)
     }
 
-    Rectangle {
+    AppIcon {
         anchors.verticalCenter: parent.verticalCenter
         width: 28
         height: 28
-        radius: 14
-        color: Colors.m3surfaceContainerHighest
-
-        IconImage {
-            anchors.centerIn: parent
-            implicitSize: 20
-            source: Quickshell.iconPath(Apps.iconFor(root.win?.app_id), "application-x-executable")
-        }
+        source: Apps.iconSourceFor(root.win?.app_id, root.win?.title)
     }
 
     FlowText {
         anchors.verticalCenter: parent.verticalCenter
+        animate: false
         rightPadding: 8
         maxWidth: Math.max(0, Math.min(root.maxTextWidth, root.room - root.padding * 2 - 28 - root.spacing))
         width: implicitWidth

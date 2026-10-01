@@ -5,7 +5,7 @@ import qs.theme
 import qs.services
 import qs.widgets
 
-ClippingRectangle {
+Rectangle {
     id: root
 
     required property bool active
@@ -30,18 +30,20 @@ ClippingRectangle {
         onTriggered: root.player.positionChanged()
     }
 
-    Item {
+    ClippingRectangle {
         id: cover
         anchors.right: parent.right
         width: parent.width * 0.62
         height: parent.height
+        radius: root.radius
 
         Image {
             id: art
             anchors.fill: parent
-            source: root.player?.trackArtUrl ?? ""
+            source: Media.art
             fillMode: Image.PreserveAspectCrop
-            sourceSize: Qt.size(width * 2, height * 2)
+            smooth: true
+            mipmap: true
             asynchronous: true
             opacity: status === Image.Ready ? 1 : 0
             Behavior on opacity { EffectAnim {} }
@@ -160,7 +162,7 @@ ClippingRectangle {
             }
             StateLayer {
                 id: playArea
-                radius: width / 2
+                radius: root.playing ? width * 0.3 : width / 2
                 color: Colors.m3onPrimary
                 onClicked: root.player?.togglePlaying()
             }

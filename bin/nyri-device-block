@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Explicit microphone privacy switch for the current user session."""
+
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+STATE = pathlib.Path(os.environ.get("NYRI_STATE", pathlib.Path.home() / ".local/state/nyri")) / "device-block.json"
+
+
+def run(*args, check=True):
+    return subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check)
+
+
+def load():
+    try:
+        return json.loads(STATE.read_text())
+    except (OSError, ValueError):
+        return {"mic": False, "mic_mutes": {}}
+
+
+def save(state):
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    temp = STATE.with_suffix(".tmp")
+    temp.write_text(json.dumps(state, ensure_ascii=False))
+    temp.replace(STATE)
+
+
+def sources():
+    try:
+        data = json.loads(run("pactl", "--format=json", "list", "sources").stdout)
+        return {s["name"]: s for s in data if not s["name"].endswith(".monitor")}
+    except (subprocess.CalledProcessError, ValueError, KeyError):
+        return {}
+
+
+def mic(state, blocked):
+    previous = state.setdefault("mic_mutes", {})
+    for name, source in sources().items():
+        if blocked:
+            if name not in previous:
+                previous[name] = bool(source.get("mute", False))
+            run("pactl", "set-source-mute", name, "1")
+            run("pactl", "suspend-source", name, "1")
+        else:
+            run("pactl", "suspend-source", name, "0")
+            if name in previous:
+                run("pactl", "set-source-mute", name, "1" if previous[name] else "0")
+    if not blocked:
+        previous.clear()
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] not in ("block", "unblock", "enforce", "status"):
+        raise SystemExit("usage: nyri-device-block {block|unblock|enforce|status} mic")
+    state = load()
+    action = sys.argv[1]
+    if action == "status":
+        print(json.dumps({"mic": bool(state.get("mic"))}))
+        return
+    if len(sys.argv) > 2 and sys.argv[2] != "mic":
+        raise SystemExit("unknown device")
+    if action == "enforce" and not state.get("mic"):
+        return
+    blocked = action != "unblock"
+    mic(state, blocked)
+    state["mic"] = blocked
+    for key in ("camera", "camera_acl", "camera_usb"):
+        state.pop(key, None)
+    save(state)
+
+
+if __name__ == "__main__":
+    main()

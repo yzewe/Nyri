@@ -23,9 +23,7 @@ Column {
         wrapMode: Text.Wrap
         textStyle: Type.bodyMedium
         color: Colors.m3onSurfaceVariant
-        text: Privacy.active
-            ? "Режим приватности включён: уведомления не показывают текст, а шторка, буфер и поиск не попадают в трансляцию экрана."
-            : "Режим приватности скрывает текст уведомлений и убирает личное из трансляции экрана."
+        text: "Режим приватности скрывает текст уведомлений и убирает личное из трансляции экрана."
     }
 
     component Sensor: Rectangle {
@@ -43,7 +41,8 @@ Column {
         width: (root.width - 16) / 3
         height: 148
         radius: Shape.largeIncreased
-        color: on ? Colors.m3errorContainer : blocked ? Colors.m3secondaryContainer : Colors.m3surfaceContainerHigh
+        property bool accent: false
+        color: on ? Colors.m3errorContainer : accent ? Colors.m3secondaryContainer : Colors.m3surfaceContainerHigh
         Behavior on color { ColorAnim {} }
         scale: press.value
         SpringValue { id: press; target: layer.pressed ? 0.95 : 1; damping: 0.5; stiffness: 800; epsilon: 0.001 }
@@ -63,24 +62,26 @@ Column {
             MaterialShape {
                 width: 44; height: 44
                 shape: sensor.on ? "softBurst" : sensor.blocked ? "clover4Leaf" : "cookie9Sided"
-                color: sensor.on ? Colors.m3error : sensor.blocked ? Colors.m3primary : Colors.m3surfaceContainerHighest
+                color: sensor.on ? Colors.m3error : sensor.accent ? Colors.m3primary : Colors.m3surfaceContainerHighest
                 MIcon {
                     anchors.centerIn: parent
                     icon: sensor.blocked ? sensor.offIcon : sensor.icon
                     size: 22; fill: 1
-                    color: sensor.on ? Colors.m3onError : sensor.blocked ? Colors.m3onPrimary : Colors.m3onSurfaceVariant
+                    color: sensor.on ? Colors.m3onError : sensor.accent ? Colors.m3onPrimary : Colors.m3onSurfaceVariant
                 }
             }
             MText { textStyle: Type.labelLargeEmph; color: sensor.on ? Colors.m3onErrorContainer : Colors.m3onSurface; text: sensor.label }
-            FlowText {
+            MText {
                 width: parent.width
                 elide: Text.ElideRight
                 textStyle: Type.labelMedium
                 color: sensor.on ? Colors.m3onErrorContainer : Colors.m3onSurfaceVariant
                 text: sensor.on ? sensor.apps : sensor.blocked ? sensor.offText : sensor.freeText
             }
-            FlowText {
+            MText {
                 visible: sensor.action !== ""
+                width: parent.width
+                elide: Text.ElideRight
                 textStyle: Type.labelLargeEmph
                 color: sensor.on ? Colors.m3onErrorContainer : Colors.m3primary
                 text: sensor.action
@@ -94,16 +95,15 @@ Column {
             icon: "mic"; offIcon: "mic_off"; label: "Микрофон"
             on: Privacy.micOn && !Privacy.micBlocked
             blocked: Privacy.micBlocked
+            accent: !Privacy.micBlocked
             apps: Privacy.micApps.join(", ")
-            action: Privacy.micBlocked ? "Включить" : "Заглушить"
-            onAct: Privacy.muteMic(!Privacy.micBlocked)
+            action: Privacy.micBlocked ? "Включить" : "Отключить"
+            onAct: Privacy.setMicBlocked(!Privacy.micBlocked)
         }
         Sensor {
             icon: "videocam"; offIcon: "videocam_off"; label: "Камера"; freeText: "Свободна"; offText: "Выключена"
             on: Privacy.camOn
             apps: Privacy.camApps.join(", ")
-            action: Privacy.camOn ? "Отключить" : ""
-            onAct: Privacy.stopCamera()
         }
         Sensor {
             icon: "screen_share"; offIcon: "stop_screen_share"; label: "Экран"

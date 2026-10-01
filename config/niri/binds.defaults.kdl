@@ -1,0 +1,148 @@
+binds {
+    Mod+Tab repeat=false { toggle-overview; }
+    Mod+Shift+E { quit; }
+    Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
+    Mod+Shift+O { power-off-monitors; }
+
+    Alt+Tab       hotkey-overlay-title="Переключить окно" { spawn-sh "~/nyri/bin/nyri switcher next"; }
+    Alt+Shift+Tab hotkey-overlay-title="Переключить окно назад" { spawn-sh "~/nyri/bin/nyri switcher prev"; }
+    Super+G hotkey-overlay-title="Прицел" { spawn-sh "~/nyri/bin/nyri crosshair"; }
+    Mod+Space repeat=false hotkey-overlay-title="Лаунчер" { spawn-sh "~/nyri/bin/nyri launcher"; }
+    Mod+V hotkey-overlay-title="Буфер обмена" { spawn-sh "~/nyri/bin/nyri clipboard"; }
+    Mod+Alt+L allow-when-locked=true hotkey-overlay-title="Блокировка" { spawn-sh "~/nyri/bin/nyri lock"; }
+    XF86PowerOff allow-when-locked=true hotkey-overlay-title="Блокировка" { spawn-sh "~/nyri/bin/nyri lock"; }
+    Mod+Ctrl+Shift+L allow-when-locked=true hotkey-overlay-title="Блокировка" { spawn-sh "~/nyri/bin/nyri lock"; }
+    Mod+Shift+S hotkey-overlay-title="Снимок или запись" { spawn-sh "~/nyri/bin/nyri region menu"; }
+    Mod+Shift+X hotkey-overlay-title="Текст с экрана (OCR)" { spawn-sh "~/nyri/bin/nyri region ocr"; }
+    Mod+Shift+A hotkey-overlay-title="Поиск по области" { spawn-sh "~/nyri/bin/nyri region search"; }
+    Ctrl+Shift+S hotkey-overlay-title="Меню скриншота" { spawn-sh "~/nyri/bin/nyri region menu"; }
+    Mod+Y hotkey-overlay-title="Обои" { spawn-sh "~/nyri/bin/nyri wallpaper"; }
+    Mod+I hotkey-overlay-title="Настройки" { spawn-sh "~/nyri/bin/nyri settings"; }
+    Mod+N hotkey-overlay-title="Правая панель" { spawn-sh "~/nyri/bin/nyri sidebar"; }
+    Mod+Slash hotkey-overlay-title="Шпаргалка" { spawn-sh "~/nyri/bin/nyri cheatsheet"; }
+    Mod+Shift+W hotkey-overlay-title="Автоскрытие панели" { spawn-sh "~/nyri/bin/nyri panels"; }
+    Mod+Shift+C hotkey-overlay-title="Пипетка" { spawn-sh "~/nyri/bin/nyri picker"; }
+    Mod+X hotkey-overlay-title="Питание и выход" { spawn-sh "~/nyri/bin/nyri session"; }
+
+    Mod+Return hotkey-overlay-title="Терминал" { spawn-sh "~/nyri/bin/nyri terminal"; }
+    Super+E hotkey-overlay-title="Файлы" { spawn "nemo"; }
+    Super+C hotkey-overlay-title="VS Code" { spawn "code"; }
+    Super+W hotkey-overlay-title="Браузер" { spawn-sh "~/nyri/bin/nyri browser"; }
+
+    Mod+Q repeat=false { close-window; }
+    Mod+F hotkey-overlay-title="Развернуть" { maximize-column; }
+    Mod+Ctrl+F hotkey-overlay-title="Развернуть до краёв" { maximize-window-to-edges; }
+    Mod+Shift+F { fullscreen-window; }
+    Mod+Shift+T { toggle-window-floating; }
+    Mod+Shift+V { switch-focus-between-floating-and-tiling; }
+
+    Mod+R { switch-preset-column-width; }
+    Mod+Shift+R hotkey-overlay-title="Запись экрана со звуком" { spawn-sh "~/nyri/bin/nyri region recordWithSound"; }
+    Mod+Ctrl+R { reset-window-height; }
+    Mod+Ctrl+C { center-column; }
+    Mod+Minus { set-column-width "-10%"; }
+    Mod+Equal { set-column-width "+10%"; }
+    Mod+Shift+Minus { set-window-height "-10%"; }
+    Mod+Shift+Equal { set-window-height "+10%"; }
+    Mod+BracketLeft  { consume-or-expel-window-left; }
+    Mod+BracketRight { consume-or-expel-window-right; }
+
+    Mod+Left  { focus-column-left; }
+    Mod+Right { focus-column-right; }
+    Mod+Up    { focus-window-up; }
+    Mod+Down  { focus-window-down; }
+    Mod+H     { focus-column-left; }
+    Mod+J     { focus-window-down; }
+    Mod+K     { focus-window-up; }
+    Mod+L     { focus-column-right; }
+    Mod+Home  { focus-column-first; }
+    Mod+End   { focus-column-last; }
+
+    Mod+Shift+Left  { move-column-left; }
+    Mod+Shift+Right { move-column-right; }
+    Mod+Shift+Up    { move-window-up; }
+    Mod+Shift+Down  { move-window-down; }
+    Mod+Shift+H     { move-column-left; }
+    Mod+Shift+J     { move-window-down; }
+    Mod+Shift+K     { move-window-up; }
+    Mod+Shift+L     { move-column-right; }
+    Mod+Ctrl+Home   { move-column-to-first; }
+    Mod+Ctrl+End    { move-column-to-last; }
+
+    Mod+Ctrl+Left  { focus-monitor-left; }
+    Mod+Ctrl+Right { focus-monitor-right; }
+    Mod+Ctrl+Up    { focus-monitor-up; }
+    Mod+Ctrl+Down  { focus-monitor-down; }
+    Mod+Ctrl+Shift+Left  { move-column-to-monitor-left; }
+    Mod+Ctrl+Shift+Right { move-column-to-monitor-right; }
+    Mod+Ctrl+Shift+Up    { move-column-to-monitor-up; }
+    Mod+Ctrl+Shift+Down  { move-column-to-monitor-down; }
+
+    Mod+1 { focus-workspace 1; }
+    Mod+2 { focus-workspace 2; }
+    Mod+3 { focus-workspace 3; }
+    Mod+4 { focus-workspace 4; }
+    Mod+5 { focus-workspace 5; }
+    Mod+6 { focus-workspace 6; }
+    Mod+7 { focus-workspace 7; }
+    Mod+8 { focus-workspace 8; }
+    Mod+9 { focus-workspace 9; }
+    Mod+Shift+1 { move-column-to-workspace 1; }
+    Mod+Shift+2 { move-column-to-workspace 2; }
+    Mod+Shift+3 { move-column-to-workspace 3; }
+    Mod+Shift+4 { move-column-to-workspace 4; }
+    Mod+Shift+5 { move-column-to-workspace 5; }
+    Mod+Shift+6 { move-column-to-workspace 6; }
+    Mod+Shift+7 { move-column-to-workspace 7; }
+    Mod+Shift+8 { move-column-to-workspace 8; }
+    Mod+Shift+9 { move-column-to-workspace 9; }
+    Mod+Page_Down { focus-workspace-down; }
+    Mod+Page_Up   { focus-workspace-up; }
+    Mod+Ctrl+Page_Down { move-column-to-workspace-down; }
+    Mod+Ctrl+Page_Up   { move-column-to-workspace-up; }
+    Mod+WheelScrollDown      cooldown-ms=150 { focus-workspace-down; }
+    Mod+WheelScrollUp        cooldown-ms=150 { focus-workspace-up; }
+    Mod+Ctrl+WheelScrollDown cooldown-ms=150 { move-column-to-workspace-down; }
+    Mod+Ctrl+WheelScrollUp   cooldown-ms=150 { move-column-to-workspace-up; }
+    Mod+WheelScrollRight { focus-column-right; }
+    Mod+WheelScrollLeft  { focus-column-left; }
+
+    Mod+MouseMiddle hotkey-overlay-title="Обзор (колесо мыши)" { toggle-overview; }
+    Mod+MouseForward { focus-column-right; }
+    Mod+MouseBack    { focus-column-left; }
+    Mod+Shift+MouseForward { move-column-right; }
+    Mod+Shift+MouseBack    { move-column-left; }
+    Mod+Shift+WheelScrollDown { focus-column-right; }
+    Mod+Shift+WheelScrollUp   { focus-column-left; }
+    Mod+Ctrl+Shift+WheelScrollDown { move-column-right; }
+    Mod+Ctrl+Shift+WheelScrollUp   { move-column-left; }
+    Mod+Alt+WheelScrollUp   allow-when-locked=true hotkey-overlay-title="Громче (колесо)" { spawn-sh "~/nyri/bin/nyri audio volumeUp"; }
+    Mod+Alt+WheelScrollDown allow-when-locked=true hotkey-overlay-title="Тише (колесо)" { spawn-sh "~/nyri/bin/nyri audio volumeDown"; }
+    Mod+Alt+MouseMiddle  hotkey-overlay-title="Пауза (колесо)" { spawn-sh "~/nyri/bin/nyri mpris playPause"; }
+    Mod+Alt+MouseForward { spawn-sh "~/nyri/bin/nyri mpris next"; }
+    Mod+Alt+MouseBack    { spawn-sh "~/nyri/bin/nyri mpris previous"; }
+
+    Print       hotkey-overlay-title="Снимок или запись" { spawn-sh "~/nyri/bin/nyri region menu"; }
+    Shift+Print hotkey-overlay-title="Записать область" { spawn-sh "~/nyri/bin/nyri region record"; }
+    Ctrl+Print  { screenshot-screen; }
+    Alt+Print   { screenshot-window; }
+
+    XF86AudioRaiseVolume allow-when-locked=true hotkey-overlay-title="Громче" { spawn-sh "~/nyri/bin/nyri audio volumeUp"; }
+    XF86AudioLowerVolume allow-when-locked=true hotkey-overlay-title="Тише" { spawn-sh "~/nyri/bin/nyri audio volumeDown"; }
+    XF86AudioMute        allow-when-locked=true hotkey-overlay-title="Звук вкл/выкл" { spawn-sh "~/nyri/bin/nyri audio mute"; }
+    XF86AudioMicMute     allow-when-locked=true hotkey-overlay-title="Микрофон вкл/выкл" { spawn-sh "~/nyri/bin/nyri audio micMute"; }
+    XF86MonBrightnessUp   allow-when-locked=true hotkey-overlay-title="Ярче" { spawn-sh "~/nyri/bin/nyri brightness increment"; }
+    XF86MonBrightnessDown allow-when-locked=true hotkey-overlay-title="Темнее" { spawn-sh "~/nyri/bin/nyri brightness decrement"; }
+    XF86AudioPlay  hotkey-overlay-title="Пауза / играть" { spawn-sh "~/nyri/bin/nyri mpris playPause"; }
+    XF86AudioPause hotkey-overlay-title="Пауза / играть" { spawn-sh "~/nyri/bin/nyri mpris playPause"; }
+    XF86AudioNext  hotkey-overlay-title="Следующий трек" { spawn-sh "~/nyri/bin/nyri mpris next"; }
+    XF86AudioPrev  hotkey-overlay-title="Предыдущий трек" { spawn-sh "~/nyri/bin/nyri mpris previous"; }
+
+    Ctrl+Mod+Space hotkey-overlay-title="Пауза / играть" { spawn-sh "~/nyri/bin/nyri mpris playPause"; }
+    Mod+Alt+N      hotkey-overlay-title="Следующий трек" { spawn-sh "~/nyri/bin/nyri mpris next"; }
+    Mod+Alt+P      hotkey-overlay-title="Предыдущий трек" { spawn-sh "~/nyri/bin/nyri mpris previous"; }
+    Mod+Shift+M    hotkey-overlay-title="Звук вкл/выкл" { spawn-sh "~/nyri/bin/nyri audio mute"; }
+    Mod+Shift+P    hotkey-overlay-title="Пауза / играть" { spawn-sh "~/nyri/bin/nyri mpris playPause"; }
+    Mod+Shift+N    hotkey-overlay-title="Следующий трек" { spawn-sh "~/nyri/bin/nyri mpris next"; }
+    Mod+Shift+B    hotkey-overlay-title="Предыдущий трек" { spawn-sh "~/nyri/bin/nyri mpris previous"; }
+}

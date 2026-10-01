@@ -14,6 +14,7 @@ STATE = Path(os.environ.get("NYRI_STATE") or Path.home() / ".local/state/nyri")
 DIR = STATE / "sessions"
 LAST = "Прошлый раз"
 SKIP = {"org.quickshell"}
+HYPR = bool(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"))
 
 
 def path(name):
@@ -31,11 +32,33 @@ def migrate():
 
 
 def niri(*args, parse=True):
+    if HYPR and args and args[0] == "workspaces":
+        raw = subprocess.run(["hyprctl", "-j", "workspaces"], capture_output=True, text=True, timeout=5).stdout
+        return [{"id": w["id"], "idx": w["id"], "output": w.get("monitor", "")} for w in json.loads(raw or "[]")]
+    if HYPR and args and args[0] == "windows":
+        raw = subprocess.run(["hyprctl", "-j", "clients"], capture_output=True, text=True, timeout=5).stdout
+        return [{"id": w["address"], "app_id": w.get("class", ""), "pid": w.get("pid"),
+                 "workspace_id": w.get("workspace", {}).get("id"), "is_floating": w.get("floating", False),
+                 "is_focused": w.get("focusHistoryID") == 0, "layout": {}}
+                for w in json.loads(raw or "[]")]
     out = subprocess.run(["niri", "msg", *(["-j"] if parse else []), *args], capture_output=True, text=True, timeout=5).stdout
     return json.loads(out) if parse and out.strip() else out
 
 
 def act(*args):
+    if HYPR:
+        name = args[0]
+        if name == "focus-monitor": dispatch = ["focusmonitor", args[1]]
+        elif name == "focus-workspace": dispatch = ["workspace", args[1]]
+        elif name == "move-window-to-workspace": dispatch = ["movetoworkspacesilent", f"{args[-1]},address:{args[args.index('--window-id') + 1]}"]
+        elif name == "focus-window": dispatch = ["focuswindow", "address:" + args[args.index("--id") + 1]]
+        elif name in ("move-window-to-floating", "move-window-to-tiling"):
+            dispatch = ["togglefloating", "address:" + args[args.index("--id") + 1]]
+        elif name in ("move-column-to-index", "set-column-width"):
+            return
+        else: return
+        subprocess.run(["hyprctl", "dispatch", *dispatch], capture_output=True, timeout=5)
+        return
     subprocess.run(["niri", "msg", "action", *args], capture_output=True, timeout=5)
 
 

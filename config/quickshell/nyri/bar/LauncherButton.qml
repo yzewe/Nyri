@@ -12,7 +12,14 @@ Item {
 
     property real intro: 0
     scale: intro
-    SpatialAnim on intro { from: 0; to: 1; speed: "slow" }
+    SpatialAnim on intro { id: introAnim; running: false; from: 0; to: 1; speed: "slow" }
+    function playIntro() { intro = 0; introAnim.restart(); }
+    function holdIntro() { introAnim.stop(); intro = 0; }
+    Component.onCompleted: if (!Lock.locked) playIntro()
+    Connections {
+        target: Lock
+        function onLockedChanged() { if (Lock.locked) root.holdIntro(); else root.playIntro(); }
+    }
 
     MaterialShape {
         id: shape

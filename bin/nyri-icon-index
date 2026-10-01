@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Index real application icon files for Quickshell's app surfaces."""
+import json
+import os
+from pathlib import Path
+
+home = Path.home()
+state = Path(os.environ.get("NYRI_STATE") or home / ".local/state/nyri")
+roots = [home / ".local/share", Path("/run/current-system/sw/share"), Path("/usr/share")]
+roots += [Path(p) for p in os.environ.get("XDG_DATA_DIRS", "").split(":") if p]
+icons = {}
+scores = {}
+
+def active_theme():
+    for cfg in (home / ".config/gtk-3.0/settings.ini", home / ".config/gtk-4.0/settings.ini"):
+        if not cfg.is_file():
+            continue
+        for line in cfg.read_text(errors="replace").splitlines():
+            if line.startswith("gtk-icon-theme-name="):
+                return line.split("=", 1)[1].strip()
+    return ""
+
+theme_name = active_theme()
+
+def sharp_score(file):
+    if file.suffix.lower() == ".svg" or "scalable" in file.parts:
+        return 400
+    best = 0
+    for part in file.parts:
+        token = part.lower().replace("@2x", "")
+        head = token.split("x", 1)[0]
+        if head.isdigit():
+            best = max(best, int(head))
+    return min(best, 256)
+
+for root in dict.fromkeys(roots):
+    icon_root = root / "icons"
+    if icon_root.is_dir():
+        for theme in icon_root.iterdir():
+            if not theme.is_dir():
+                continue
+            for kind in ("apps", "mimetypes", "mimes", "status", "devices", "places", "categories"):
+                for app_dir in theme.glob(f"**/{kind}"):
+                    if not app_dir.is_dir():
+                        continue
+                    for file in app_dir.iterdir():
+                        if file.suffix.lower() not in (".svg", ".png", ".webp"):
+                            continue
+                        if "symbolic" in file.parts or file.stem.endswith("-symbolic"):
+                            continue
+                        key = file.stem.lower()
+                        score = sharp_score(file) + \
+                                (180 if theme.name == theme_name else 0) + \
+                                (30 if theme.name == "hicolor" else 0) + \
+                                (20 if root == roots[0] else 0) + \
+                                (15 if app_dir.name == "apps" else 0)
+                        if score > scores.get(key, -1):
+                            scores[key] = score
+                            icons[key] = str(file.resolve())
+    pixmaps = root / "pixmaps"
+    if pixmaps.is_dir():
+        for file in pixmaps.iterdir():
+            if file.suffix.lower() in (".svg", ".png", ".webp"):
+                icons.setdefault(file.stem.lower(), str(file.resolve()))
+
+state.mkdir(parents=True, exist_ok=True)
+tmp = state / "icons.json.tmp"
+tmp.write_text(json.dumps(icons, ensure_ascii=False))
+tmp.replace(state / "icons.json")

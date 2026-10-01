@@ -68,9 +68,9 @@ Item {
 
     Row {
         anchors.verticalCenter: parent.verticalCenter
-        x: 18
-        width: parent.width - 36 - (root.details ? 36 : 0)
-        spacing: 12
+        x: 14
+        width: parent.width - 28 - (root.details ? 36 : 0)
+        spacing: 8
 
         MIcon {
             anchors.verticalCenter: parent.verticalCenter
@@ -82,7 +82,7 @@ Item {
 
         Column {
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - 34
+            width: parent.width - 30
 
             FlowText {
                 width: parent.width

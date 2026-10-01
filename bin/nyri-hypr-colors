@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""Sync Hyprland window borders with the current Nyri palette."""
+import json
+import os
+import subprocess
+from pathlib import Path
+
+state = Path(os.environ.get("NYRI_STATE") or Path.home() / ".local/state/nyri")
+palette = json.loads((state / "theme.json").read_text())["colors"]
+config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "hypr"
+config.mkdir(parents=True, exist_ok=True)
+
+active = (palette.get("primary_container") or palette["primary"]).removeprefix("#")
+inactive = (palette.get("outline") or palette["outline_variant"]).removeprefix("#")
+legacy = f"general:col.active_border = rgba({active}ff)\ngeneral:col.inactive_border = rgba({inactive}aa)\n"
+(config / "nyri-colors.conf").write_text(legacy)
+(config / "nyri-colors.lua").write_text(
+    "-- Generated from the current Nyri theme.\n"
+    f"hl.config({{ [\"general.col.active_border\"] = 0xff{active}, "
+    f"[\"general.col.inactive_border\"] = 0xaa{inactive} }})\n"
+)
+
+if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+    lua = (config / "nyri-colors.lua").read_text().splitlines()[-1]
+    result = subprocess.run(["hyprctl", "eval", lua], capture_output=True, text=True, timeout=5)
+    if result.returncode or "only supported with the lua" in result.stdout.lower():
+        for option, value in (("general:col.active_border", f"rgba({active}ff)"),
+                              ("general:col.inactive_border", f"rgba({inactive}aa)")):
+            subprocess.run(["hyprctl", "keyword", option, value], capture_output=True, timeout=5)

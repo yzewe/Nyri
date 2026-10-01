@@ -3,23 +3,173 @@ set -euo pipefail
 
 NYRI="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
+mode=niri
+if [[ ${1:-} == --hyprland ]]; then mode=hyprland; shift; fi
 
 if [[ ${1:-} == --undo ]]; then
     bold "Unlinking nyri, restoring the backup"
+    "$NYRI/bin/nyri-hypr" uninstall || true
     "$NYRI/bin/nyri-link" uninstall
+    undo_greeter
     systemctl --user enable inir.service 2>/dev/null && echo "iNiR will start again at login"
     bold "Done. Log out and back in."
     exit 0
 fi
 
+arch_packages() {
+    local -a pkgs=(
+        quickshell matugen jq fuzzel cliphist wl-clipboard grim slurp
+        wf-recorder hyprpicker hyprlock brightnessctl wireplumber pipewire
+        pipewire-pulse pipewire-alsa playerctl tesseract tesseract-data-eng
+        tesseract-data-rus curl libnotify glib2 wlsunset libqalculate resvg
+        swappy python-gobject kitty plocate ttf-material-symbols-variable
+        ttf-jetbrains-mono-nerd xdg-desktop-portal xdg-desktop-portal-gtk polkit
+        niri xdg-desktop-portal-gnome hyprland xdg-desktop-portal-hyprland
+        greetd cage
+    )
+    printf '%s\n' "${pkgs[@]}"
+}
+
+install_arch_packages() {
+    command -v pacman >/dev/null || return 0
+    bold "Installing packages from the Arch repositories"
+    local -a pkgs=()
+    mapfile -t pkgs < <(arch_packages)
+    sudo pacman -S --needed --noconfirm "${pkgs[@]}"
+    hash -r
+}
+
+install_rubik() {
+    fc-list : family | grep -qF "Rubik" && return 0
+    bold "Installing the Rubik font"
+    local dir="${XDG_DATA_HOME:-$HOME/.local/share}/fonts/nyri"
+    mkdir -p "$dir"
+    curl -fsSL -o "$dir/Rubik[wght].ttf" \
+        "https://github.com/google/fonts/raw/main/ofl/rubik/Rubik%5Bwght%5D.ttf"
+    fc-cache -f "$dir" >/dev/null
+}
+
+display_manager_enabled() {
+    local unit
+    for unit in sddm.service gdm.service greetd.service lightdm.service ly.service; do
+        systemctl is-enabled "$unit" &>/dev/null && return 0
+    done
+    return 1
+}
+
+ensure_tty_login() {
+    display_manager_enabled && return 0
+    local profile="$HOME/.bash_profile" cmd="niri-session"
+    [[ $mode == hyprland ]] && cmd="Hyprland"
+    if [[ -f $profile ]] && grep -q 'nyri-tty-login' "$profile"; then
+        return 0
+    fi
+    cat >> "$profile" <<EOF
+
+# nyri-tty-login
+if [ -z "\${WAYLAND_DISPLAY:-}" ] && [ "\$(tty)" = "/dev/tty1" ]; then
+  exec $cmd
+fi
+EOF
+    echo "  no display manager found: $cmd starts when you log in on tty1"
+}
+
+remove_tty_login() {
+    local profile="$HOME/.bash_profile"
+    [[ -f $profile ]] || return 0
+    grep -q 'nyri-tty-login' "$profile" || return 0
+    python3 - "$profile" <<'PY'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+start = text.find("# nyri-tty-login")
+if start < 0:
+    raise SystemExit(0)
+end = text.find("\nfi\n", start)
+if end < 0:
+    raise SystemExit(0)
+end += 4
+if start > 0 and text[start - 1] == "\n":
+    start -= 1
+path.write_text(text[:start] + text[end:])
+PY
+    echo "  removed the tty1 autostart from ~/.bash_profile"
+}
+
+undo_greeter() {
+    [[ -f /etc/greetd/config.toml ]] || return 0
+    grep -q 'nyri-greeter' /etc/greetd/config.toml || return 0
+    sudo systemctl disable greetd.service || true
+    sudo rm -f /etc/greetd/config.toml /usr/local/bin/nyri-greeter /usr/local/bin/nyri-greetd
+    sudo rm -rf /usr/local/share/nyri/greeter
+    echo "  Nyri greeter disabled. The saved Niri/Hyprland choice stays in /var/lib/nyri/login.json"
+}
+
+install_greeter() {
+    local qs_bin
+    qs_bin="$(command -v qs || true)"
+    if [[ -z $qs_bin || ! -x /usr/bin/greetd && ! -x $(command -v greetd || true) ]]; then
+        echo "  greetd or quickshell is missing, login screen was not installed"
+        return 1
+    fi
+    command -v cage >/dev/null || { echo "  cage is missing, login screen was not installed"; return 1; }
+    if display_manager_enabled && ! systemctl is-enabled greetd.service &>/dev/null; then
+        echo "  another display manager is already enabled, Nyri greeter was not switched on"
+        return 1
+    fi
+    if [[ -f /etc/greetd/config.toml ]] && ! grep -q 'nyri-greeter' /etc/greetd/config.toml; then
+        echo "  greetd already has its own config, Nyri greeter was not switched on"
+        return 1
+    fi
+    sudo install -d -o greeter -g greeter -m 0755 /var/lib/nyri
+    sudo install -d -m 0755 /usr/local/share/nyri/greeter /usr/local/bin
+    sudo install -m 0755 "$NYRI/bin/nyri-greeter" /usr/local/bin/nyri-greeter
+    sudo install -m 0755 "$NYRI/bin/nyri-greetd" /usr/local/bin/nyri-greetd
+    sudo cp -a "$NYRI/config/quickshell/nyri-greeter/." /usr/local/share/nyri/greeter/
+    local font="${XDG_DATA_HOME:-$HOME/.local/share}/fonts/nyri/Rubik[wght].ttf"
+    if [[ -f $font ]]; then
+        sudo install -d -m 0755 /usr/local/share/fonts/nyri
+        sudo install -m 0644 "$font" "/usr/local/share/fonts/nyri/Rubik[wght].ttf"
+        sudo fc-cache -f /usr/local/share/fonts/nyri >/dev/null || true
+    fi
+    if [[ ! -f /var/lib/nyri/login.json ]]; then
+        local session=niri
+        [[ $mode == hyprland ]] && session=hyprland
+        printf '{"user":"%s","session":"%s"}\n' "$(id -un)" "$session" | sudo tee /var/lib/nyri/login.json >/dev/null
+        sudo chown greeter:greeter /var/lib/nyri/login.json
+        sudo chmod 0644 /var/lib/nyri/login.json
+    fi
+    sudo tee /etc/greetd/config.toml >/dev/null <<EOF
+# nyri-greeter
+[terminal]
+vt = 1
+
+[default_session]
+command = "cage -s -- /usr/local/bin/nyri-greeter"
+user = "greeter"
+EOF
+    sudo systemctl enable greetd.service
+    remove_tty_login
+    echo "  Nyri greeter starts on tty1 after reboot. The Niri or Hyprland choice is kept."
+}
+
 bold "Checking dependencies"
+if command -v pacman >/dev/null; then
+    install_arch_packages
+    install_rubik
+fi
 missing=()
-for cmd in niri qs matugen jq fuzzel cliphist wl-paste wl-copy grim slurp wf-recorder hyprpicker \
+for cmd in qs matugen jq fuzzel cliphist wl-paste wl-copy grim slurp wf-recorder hyprpicker \
            brightnessctl wpctl playerctl tesseract hyprlock curl notify-send gdbus \
-           kreadconfig6 plasma-apply-colorscheme wlsunset qalc; do
+           wlsunset qalc; do
     command -v "$cmd" >/dev/null || missing+=("$cmd")
 done
-fonts="$(fc-list : family)"
+if [[ $mode == hyprland ]]; then
+    for cmd in Hyprland hyprctl; do command -v "$cmd" >/dev/null || missing+=("$cmd"); done
+else
+    command -v niri >/dev/null || missing+=("niri")
+fi
+fonts="$(fc-list : family 2>/dev/null || true)"
 for font in "Rubik" "Material Symbols Rounded" "JetBrainsMono Nerd Font"; do
     grep -qF "$font" <<<"$fonts" || missing+=("font: $font")
 done
@@ -30,13 +180,38 @@ else
     echo "  all there"
 fi
 
+required=()
+for cmd in qs matugen jq; do command -v "$cmd" >/dev/null || required+=("$cmd"); done
+if [[ $mode == hyprland ]]; then
+    command -v Hyprland >/dev/null || required+=("Hyprland")
+    command -v hyprctl >/dev/null || required+=("hyprctl")
+else
+    command -v niri >/dev/null || required+=("niri")
+fi
+if ((${#required[@]})); then
+    printf 'Cannot install Nyri: required programs missing: %s\n' "${required[*]}" >&2
+    echo "Install the selected compositor and Quickshell first. Nyri does not install a display manager." >&2
+    exit 1
+fi
+
 bold "Rendering the theme from the current wallpaper"
 "$NYRI/bin/nyri-theme"
 
 bold "Linking configs (replaced files go to ~/.config-nyri-backup/)"
+"$NYRI/bin/nyri-binds" init
 "$NYRI/bin/nyri-link" install
 
-bold "Stopping iNiR from starting with niri"
-systemctl --user disable inir.service 2>/dev/null && echo "  inir.service disabled" || echo "  inir.service was not enabled"
+if [[ $mode == hyprland ]]; then
+    bold "Adding Nyri to Hyprland without changing personal shortcuts"
+    "$NYRI/bin/nyri-hypr" install
+else
+    bold "Stopping iNiR from starting with niri"
+    systemctl --user disable inir.service 2>/dev/null && echo "  inir.service disabled" || echo "  inir.service was not enabled"
+fi
 
-bold "Done. Log out and back in to start nyri. Undo any time: nyri-install --undo"
+if install_greeter; then
+    bold "Done. Reboot and sign in on the Nyri screen. Undo any time: nyri-install --undo"
+else
+    ensure_tty_login
+    bold "Done. Log out and back in to start nyri. Undo any time: nyri-install --undo"
+fi

@@ -63,7 +63,7 @@ ShellRoot {
         function close(): void { Panels.close(); }
         function open(panel: string, page: string): void { Panels.anchorW = 0; Panels.open(panel, page); }
         function osd(kind: string): void { Osd.show(kind); }
-        function state(): string { return JSON.stringify({ panel: Panels.current, tab: Panels.tab, screen: Panels.screen?.name ?? null, output: Niri.focusedOutput, locked: Lock.locked, windows: Object.keys(Niri.windows).length, workspaces: Niri.workspaces.length, screenTime: { app: ScreenTime.current, away: ScreenTime.away, focused: Niri.focusedWindow?.app_id ?? null } }); }
+        function state(): string { return JSON.stringify({ panel: Panels.current, tab: Panels.tab, screen: Panels.screen?.name ?? null, output: Compositor.focusedOutput, locked: Lock.locked, windows: Object.keys(Compositor.windows).length, workspaces: Compositor.workspaces.length, screenTime: { app: ScreenTime.current, away: ScreenTime.away, focused: Compositor.focusedWindow?.app_id ?? null } }); }
         function lock(): void { Lock.lock(); }
         function unlockNested(): void { if (Panels.nested) Lock.unlockRequested(); }
         function polkitDemo(): void { if (Panels.nested) polkit.showDemo(); }

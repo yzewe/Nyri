@@ -22,39 +22,67 @@ Variants {
         readonly property real lift: Panels.barBottom && cfg.autohide ? Panels.barReach + 8 : 0
 
         screen: out
-        anchors { bottom: true; left: true; right: true }
-        implicitHeight: dockH + 12 + lift + Math.max(sz * 0.6 + 140, menuCard.height + 24, peekCard.height + 24)
+        anchors { top: true; bottom: true; left: true; right: true }
         color: "transparent"
         exclusionMode: cfg.autohide ? ExclusionMode.Ignore : ExclusionMode.Normal
         exclusiveZone: cfg.autohide ? 0 : dockH + 12 + lift
         WlrLayershell.namespace: "nyri-dock"
         WlrLayershell.layer: cfg.autohide ? WlrLayer.Overlay : WlrLayer.Top
 
-        function keyOf(appId) { return DesktopEntries.heuristicLookup(appId)?.id ?? appId; }
+        function keyOf(appId, title) {
+            const id = (appId ?? "").toLowerCase().replace(/\.desktop$/, "");
+            let titleMatch = "";
+            let titleLength = 0;
+            for (const pinnedId of pinned) {
+                const entry = DesktopEntries.byId(pinnedId) ?? DesktopEntries.heuristicLookup(pinnedId);
+                if (!entry) continue;
+                const entryId = (entry.id ?? "").toLowerCase().replace(/\.desktop$/, "");
+                const name = (entry.name ?? "").toLowerCase();
+                const heading = (title ?? "").toLowerCase();
+                if (id === entryId || id === entryId.split(".").pop())
+                    return pinnedId;
+                if (id === "electron" && name.length > 3 && heading.includes(name) && name.length > titleLength) {
+                    titleMatch = pinnedId;
+                    titleLength = name.length;
+                }
+            }
+            if (titleMatch) return titleMatch;
+            if (id === "electron" && title) {
+                const heading = title.toLowerCase();
+                let found = null;
+                for (const entry of Apps.all) {
+                    const name = (entry.name ?? "").toLowerCase();
+                    if (name.length > 3 && heading.includes(name) && (!found || name.length > found.name.length))
+                        found = { id: entry.id, name };
+                }
+                if (found) return found.id;
+            }
+            return DesktopEntries.heuristicLookup(appId)?.id ?? appId;
+        }
         readonly property var own: ({
-            "nyri:settings": { name: "Настройки", icon: "preferences-system", open: () => Panels.openSettings() },
-            "nyri:studio": { name: "Студия обоев", icon: "preferences-desktop-wallpaper", open: () => Panels.open("wallpaper") }
+            "nyri:settings": { name: "Настройки", icon: "file://" + Paths.root + "/assets/nyri-settings.svg", open: () => Panels.openSettings() },
+            "nyri:studio": { name: "Студия обоев", icon: "file://" + Paths.root + "/assets/nyri-wallpaper.svg", open: () => Panels.open("wallpaper") }
         })
         function ownKey(w) { return /Обои/.test(w.title ?? "") ? "nyri:studio" : "nyri:settings"; }
-        readonly property var pinned: Array.isArray(cfg.pinned) ? cfg.pinned : []
+        readonly property var pinned: Config.list(cfg.pinned)
         readonly property var items: {
             const byKey = {};
             const order = [];
             for (const id of pinned) {
                 const o = own[id];
                 const e = o ? null : (DesktopEntries.byId(id) ?? DesktopEntries.heuristicLookup(id));
-                if (!e && !o && !id) continue;
+                if (!e && !o) continue;
                 byKey[id] = { key: id, entry: e, appId: id, windows: [], pinned: true, own: o ?? null };
                 order.push(id);
             }
             if (cfg.running) {
-                const ws = Object.values(Niri.windows).sort((a, b) => (b.focus_timestamp?.secs ?? 0) - (a.focus_timestamp?.secs ?? 0));
+                const ws = Object.values(Compositor.windows).sort((a, b) => (b.focus_timestamp?.secs ?? 0) - (a.focus_timestamp?.secs ?? 0));
                 for (const w of ws) {
                     if (!w.app_id) continue;
                     const mine = w.app_id === "org.quickshell";
-                    const k = mine ? ownKey(w) : keyOf(w.app_id);
+                    const k = mine ? ownKey(w) : keyOf(w.app_id, w.title);
                     if (!byKey[k]) {
-                        byKey[k] = { key: k, entry: mine ? null : DesktopEntries.heuristicLookup(w.app_id), appId: w.app_id, windows: [], pinned: false, own: mine ? own[k] : null };
+                        byKey[k] = { key: k, entry: mine ? null : (DesktopEntries.byId(k) ?? DesktopEntries.heuristicLookup(w.app_id)), appId: w.app_id, windows: [], pinned: false, own: mine ? own[k] : null };
                         order.push(k);
                     }
                     byKey[k].windows.push(w);
@@ -63,8 +91,8 @@ Variants {
             }
             return order.map(k => byKey[k]);
         }
-        readonly property string focusedKey: !Niri.focusedWindow ? ""
-            : Niri.focusedWindow.app_id === "org.quickshell" ? ownKey(Niri.focusedWindow) : keyOf(Niri.focusedWindow.app_id)
+        readonly property string focusedKey: !Compositor.focusedWindow ? ""
+            : Compositor.focusedWindow.app_id === "org.quickshell" ? ownKey(Compositor.focusedWindow) : keyOf(Compositor.focusedWindow.app_id, Compositor.focusedWindow.title)
 
         function activate(it) {
             if (!it.windows.length) {
@@ -74,7 +102,7 @@ Variants {
             }
             const focused = it.windows.findIndex(w => w.is_focused);
             const next = it.windows[focused >= 0 ? (focused + 1) % it.windows.length : 0];
-            Niri.action("focus-window", "--id", String(next.id));
+            Compositor.action("focus-window", "--id", String(next.id));
             return false;
         }
         function setPinned(list) { Config.o.dock.pinned = list; }
@@ -89,7 +117,7 @@ Variants {
             }
         }
         function togglePin(it) {
-            if (it.pinned) setPinned(pinned.filter(k => k !== it.key));
+            if (pinned.indexOf(it.key) >= 0) setPinned(pinned.filter(k => k !== it.key));
             else setPinned(pinned.concat([it.key]));
         }
         function unread(it) {
@@ -105,47 +133,94 @@ Variants {
             return n;
         }
         function wsName(w) {
-            const ws = Niri.workspaces.find(x => x.id === w.workspace_id);
+            const ws = Compositor.workspaces.find(x => x.id === w.workspace_id);
             return ws ? "Стол " + ws.idx : "";
         }
-        function closeAll(it) { for (const w of it.windows) Niri.action("close-window", "--id", String(w.id)); }
+        function closeAll(it) { for (const w of it.windows) Compositor.action("close-window", "--id", String(w.id)); }
+        readonly property bool menuOpen: dockMenu.item !== null
+        function openMenu(slot) { dockMenu.open(slot); }
+        function closeMenu(immediate) { dockMenu.close(immediate); }
 
         readonly property bool emptyDesk: {
-            const ws = Niri.workspaces.find(w => w.output === win.out.name && w.is_active);
-            return !ws || Niri.windowCount(ws.id) === 0;
+            const ws = Compositor.workspaces.find(w => w.output === win.out.name && w.is_active);
+            return !ws || Compositor.windowCount(ws.id) === 0;
         }
         property bool pointerIn: false
         readonly property var active: ToplevelManager.activeToplevel
         readonly property bool fullscreenHere: (active?.fullscreen ?? false) && (active?.screens ?? []).some(sc => sc.name === win.screen?.name)
-        readonly property bool revealed: !Panels.deskEdit && !fullscreenHere && items.length > 0 && (!cfg.autohide || pointerIn || emptyDesk || menu.item !== null || peek.item !== null || drag.key !== "")
+        readonly property bool revealed: !Panels.deskEdit && !fullscreenHere && items.length > 0 && (!cfg.autohide || pointerIn || emptyDesk || dockMenu.item !== null || hover.slot !== null || drag.key !== "")
         SpringValue { id: reveal; target: win.revealed ? 1 : 0; damping: win.revealed ? 0.62 : 1; stiffness: win.revealed ? 420 : 380 }
 
+        QtObject {
+            id: hover
+            property Item slot: null
+            property bool icon: false
+            property bool gap: false
+            property bool pad: false
+            property int rows: 0
+            property bool menu: false
+            property bool menuIcon: false
+            property bool menuGap: false
+            property int menuRows: 0
+            readonly property bool hot: icon || gap || pad || rows > 0 || menu || menuIcon || menuGap || menuRows > 0
+            function poke() {
+                if (hot) { hoverLeave.stop(); leave.stop(); win.pointerIn = true; }
+                else hoverLeave.restart();
+            }
+            function bump(delta) { rows = Math.max(0, rows + delta); poke(); }
+            function syncMenu() {
+                if (!dockMenu.item) return;
+                if (menu || menuIcon || menuGap || menuRows > 0) menuLeave.stop();
+                else menuLeave.restart();
+            }
+            onSlotChanged: {
+                rows = 0;
+                pad = false;
+                gap = false;
+                if (!slot) return;
+                floater.shown = slot;
+                popSpring.value = 0;
+                popSpring.velocity = 0;
+                popSpring.running = true;
+            }
+        }
+        Timer {
+            id: hoverLeave
+            interval: 90
+            onTriggered: {
+                if (hover.hot) return;
+                hover.slot = null;
+                if (!dockHover.hovered && !edgeHover.hovered) leave.restart();
+            }
+        }
+
         mask: Region {
-            Region { item: reveal.value > 0.5 ? hitDock : edge }
-            Region { item: menu.item ? menuCard : null }
-            Region { item: peek.item ? peekCard : null }
-            Region { item: drag.key !== "" ? all : null }
+            Region { item: Panels.current !== "" ? null : drag.key !== "" ? all : null }
+            Region { item: Panels.current !== "" ? null : win.pointerIn || reveal.value > 0.12 ? hitDock : edge }
+            Region { item: Panels.current !== "" ? null : dockMenu.item ? menuBridge : null }
+            Region { item: Panels.current !== "" ? null : floater.shown && popSpring.value > 0.02 ? floaterBridge : null }
         }
         Item { id: all; anchors.fill: parent }
-        Item { id: edge; width: parent.width; height: 3; y: parent.height - 3 - win.lift }
-        Item { id: hitDock; x: dock.x - 8; y: dock.y - win.sz * 0.6; width: dock.width + 16; height: win.height - y - win.lift }
-
-        HoverHandler {
-            onHoveredChanged: { if (hovered) { leave.stop(); win.pointerIn = true; } else leave.restart(); }
+        Item {
+            id: edge
+            width: parent.width; height: 3; y: parent.height - 3 - win.lift
+            HoverHandler { id: edgeHover; onHoveredChanged: { if (hovered) { leave.stop(); win.pointerIn = true; } else leave.restart(); } }
         }
-        Timer { id: leave; interval: 500; onTriggered: win.pointerIn = false }
+        Item {
+            id: hitDock
+            x: dock.x - 16; y: dock.y - 56; width: dock.width + 32; height: win.height - y - win.lift
+            HoverHandler { id: dockHover; onHoveredChanged: { if (hovered) { leave.stop(); win.pointerIn = true; } else leave.restart(); } }
+        }
+        Timer {
+            id: leave
+            interval: 420
+            onTriggered: { if (!hover.hot) win.pointerIn = false; }
+        }
 
         property real mouseX: -1e6
-        HoverHandler {
-            id: over
-            target: dock
-            onPointChanged: win.mouseX = point.position.x
-            onHoveredChanged: if (!hovered) win.mouseX = -1e6
-        }
         function swell(cx) {
             if (!cfg.magnify || drag.key !== "") return 1;
-            const d = (cx - mouseX) / (sz * 1.5);
-            return 1 + 0.5 * Math.exp(-d * d);
+            return Math.abs(cx - mouseX) < sz / 2 ? 1.16 : 1;
         }
 
         QtObject {
@@ -159,6 +234,10 @@ Variants {
 
         Item {
             id: dock
+            HoverHandler {
+                onPointChanged: win.mouseX = point.position.x
+                onHoveredChanged: if (!hovered) win.mouseX = -1e6
+            }
             readonly property var slots: {
                 const out = {};
                 let x = win.pad;
@@ -173,14 +252,8 @@ Variants {
                 return { at: out, width: Math.max(win.sz, x - 8 + win.pad + (drag.key !== "" && !drag.away && drag.to >= i ? win.sz + 8 : 0)) };
             }
             SpringValue { id: dockW; target: dock.slots.width; damping: 0.7; stiffness: 420; epsilon: 0.3 }
-            readonly property real peak: {
-                let k = 1;
-                for (const it of win.items) k = Math.max(k, win.swell(dock.slots.at[it.key] ?? -1e6));
-                return k;
-            }
-            SpringValue { id: pillH; target: win.sz * dock.peak + 2 * win.pad; damping: 0.62; stiffness: 520; epsilon: 0.2 }
             width: dockW.value
-            height: pillH.value
+            height: win.dockH
             x: (win.width - width) / 2
             y: win.height - height - 12 - win.lift + (1 - reveal.value) * (win.dockH + 24)
             opacity: Math.min(1, reveal.value * 2)
@@ -214,6 +287,7 @@ Variants {
                     SpringValue { id: cx; target: slot.held ? drag.x : slot.restX; damping: slot.held ? 0.9 : 0.66; stiffness: slot.held ? 1800 : 460; epsilon: 0.2 }
                     SpringValue { id: size; target: win.sz * (slot.held ? (drag.away ? 0.7 : 1.15) : slot.k); damping: 0.62; stiffness: 520; epsilon: 0.1 }
                     SpringValue { id: hop; target: 0; damping: 0.3; stiffness: 260; epsilon: 0.2 }
+                    SpringValue { id: press; target: tapH.pressed ? 0.88 : 1; damping: 0.55; stiffness: 700; epsilon: 0.002 }
                     SpringValue { id: born; target: 1; damping: 0.6; stiffness: 420; Component.onCompleted: { value = 0; running = true; } }
 
                     z: held ? 10 : 0
@@ -221,13 +295,13 @@ Variants {
                     height: size.value
                     x: cx.value - width / 2
                     y: (slot.held ? Math.min(win.pad, drag.y) : dock.height - win.pad - height) + hop.value
-                    scale: Math.min(1, born.value)
+                    scale: Math.min(1, born.value) * press.value
                     opacity: slot.held && drag.away ? 0.5 : 1
                     rotation: Math.max(-1, Math.min(1, cx.velocity / 2500)) * 10
 
-                    IconImage {
+                    AppIcon {
                         anchors.fill: parent
-                        source: Quickshell.iconPath(slot.it.own?.icon ?? slot.it.entry?.icon ?? Apps.iconFor(slot.it.appId), "application-x-executable")
+                        source: slot.it.own ? slot.it.own.icon : Apps.iconSourceFor(slot.it.entry?.id ?? slot.it.appId, slot.it.windows[0]?.title)
                     }
 
                     Row {
@@ -269,35 +343,34 @@ Variants {
                         MText { id: badgeText; anchors.centerIn: parent; textStyle: Type.labelSmall; font.features: { "tnum": 1 }; color: Colors.m3onError; text: badge.n > 9 ? "9+" : String(badge.n) }
                     }
 
-                    Rectangle {
-                        visible: tipIn.value > 0.02
-                        SpringValue { id: tipIn; target: tap.hovered && drag.key === "" && menu.item === null && peek.item !== slot ? 1 : 0; damping: 0.7; stiffness: 520 }
-                        opacity: Math.min(1, tipIn.value)
-                        scale: 0.8 + 0.2 * tipIn.value
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: -height - 10
-                        width: tipText.implicitWidth + 24
-                        height: 30
-                        radius: 15
-                        color: Colors.m3inverseSurface
-                        MText { id: tipText; anchors.centerIn: parent; textStyle: Type.labelLarge; color: Colors.m3inverseOnSurface; text: slot.it.own?.name ?? slot.it.entry?.name ?? Apps.nameFor(slot.it.appId) }
-                    }
-
                     HoverHandler {
                         id: tap
                         cursorShape: dragH.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                         onHoveredChanged: {
-                            if (hovered && slot.it.windows.length > 0 && drag.key === "" && menu.item === null) { peek.want = slot; peekOpen.restart(); }
-                            else if (!hovered) { peekOpen.stop(); peekClose.restart(); }
+                            if (hovered && drag.key === "" && !win.menuOpen) {
+                                hover.slot = slot;
+                                hover.icon = true;
+                                hover.poke();
+                            } else if (!hovered && hover.slot === slot) {
+                                hover.icon = false;
+                                hover.poke();
+                            }
+                            if (dockMenu.item === slot) {
+                                hover.menuIcon = hovered;
+                                hover.syncMenu();
+                            }
                         }
                     }
                     TapHandler {
+                        id: tapH
                         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                         onTapped: (ev, button) => {
-                            peek.item = null;
-                            if (button === Qt.RightButton) { menu.open(slot); return; }
-                            if (button === Qt.MiddleButton) { if (slot.it.entry) { Apps.launch(slot.it.entry); hop.velocity = -700; hop.running = true; } return; }
-                            if (win.activate(slot.it)) { hop.velocity = -700; hop.running = true; }
+                            hover.slot = null;
+                            if (button === Qt.RightButton) { win.openMenu(slot); return; }
+                            if (button === Qt.MiddleButton) { if (slot.it.entry) Apps.launch(slot.it.entry); }
+                            else win.activate(slot.it);
+                            hop.velocity = -700;
+                            hop.running = true;
                         }
                     }
                     DragHandler {
@@ -305,6 +378,7 @@ Variants {
                         target: null
                         onActiveChanged: {
                             if (active) {
+                                hover.slot = null;
                                 const p = slot.mapToItem(dock, centroid.position.x, centroid.position.y);
                                 drag.x = p.x; drag.y = win.pad; drag.to = slot.index; drag.key = slot.it.key;
                                 return;
@@ -335,33 +409,53 @@ Variants {
             }
         }
 
-        QtObject {
-            id: peek
-            property Item item: null
-            property Item want: null
+        Item {
+            id: floaterBridge
+            readonly property real iconTop: dock.y + (floater.shown?.y ?? 0)
+            x: floater.x - 12
+            y: floater.y - 12
+            width: floater.width + 24
+            height: Math.max(floater.height + 24, iconTop - y + 6)
+            HoverHandler { onHoveredChanged: { hover.gap = hovered; hover.poke(); } }
         }
-        Timer { id: peekOpen; interval: 380; onTriggered: { if (peek.want && peek.want.it.windows.length > 0) peek.item = peek.want; } }
-        Timer { id: peekClose; interval: 260; onTriggered: { if (!peekHover.hovered) peek.item = null; } }
-        SpringValue { id: peekIn; target: peek.item ? 1 : 0; damping: 0.7; stiffness: 520 }
         Rectangle {
-            id: peekCard
-            readonly property var it: peek.item?.it ?? null
-            visible: peekIn.value > 0.02 && it !== null
-            width: 300
-            height: peekCol.implicitHeight + 16
-            radius: Shape.large
-            color: Colors.m3surfaceContainerHigh
-            x: peek.item ? Math.max(8, Math.min(win.width - width - 8, dock.x + peek.item.x + peek.item.width / 2 - width / 2)) : x
-            y: dock.y - height - 12
-            opacity: Math.min(1, peekIn.value * 1.4)
-            scale: 0.88 + 0.12 * peekIn.value
+            id: floater
+            property Item shown: null
+            readonly property var it: shown?.it ?? null
+            readonly property int wins: it?.windows?.length ?? 0
+            readonly property bool listMode: wins > 1
+            readonly property bool show: hover.slot !== null && drag.key === "" && !win.menuOpen
+            readonly property string label: it?.own?.name ?? it?.entry?.name ?? Apps.nameFor(it?.appId)
+            visible: popSpring.value > 0.02 && shown !== null
+            width: listMode ? 300 : chipText.implicitWidth + 24
+            height: listMode ? listCol.implicitHeight + 16 : 30
+            radius: listMode ? Shape.large : 15
+            color: listMode ? Colors.m3surfaceContainerHigh : Colors.m3inverseSurface
+            x: shown ? Math.max(8, Math.min(win.width - width - 8, dock.x + shown.x + shown.width / 2 - width / 2)) : 0
+            y: shown ? dock.y + shown.y - height - 10 : 0
+            opacity: Math.min(1, popSpring.value)
+            scale: 0.8 + 0.2 * popSpring.value
             transformOrigin: Item.Bottom
-            Behavior on x { SpatialAnim { speed: "fast" } }
+            SpringValue { id: popSpring; target: floater.show ? 1 : 0; damping: 0.7; stiffness: 520; epsilon: 0.01 }
+            Connections {
+                target: popSpring
+                function onValueChanged() { if (popSpring.value < 0.02 && hover.slot === null) floater.shown = null; }
+            }
 
-            HoverHandler { id: peekHover; onHoveredChanged: if (!hovered) peekClose.restart() }
+            HoverHandler { onHoveredChanged: { hover.pad = hovered; hover.poke(); } }
+
+            MText {
+                id: chipText
+                anchors.centerIn: parent
+                visible: !floater.listMode
+                textStyle: Type.labelLarge
+                color: Colors.m3inverseOnSurface
+                text: floater.label
+            }
 
             Column {
-                id: peekCol
+                id: listCol
+                visible: floater.listMode
                 x: 8; y: 8
                 width: parent.width - 16
                 spacing: 2
@@ -369,31 +463,29 @@ Variants {
                     leftPadding: 12; topPadding: 4; bottomPadding: 6
                     textStyle: Type.labelLargeEmph
                     color: Colors.m3primary
-                    text: (peekCard.it?.own?.name ?? peekCard.it?.entry?.name ?? Apps.nameFor(peekCard.it?.appId)) + (peekCard.it && peekCard.it.windows.length > 1 ? " · " + peekCard.it.windows.length : "")
+                    text: floater.label + " · " + floater.wins
                 }
                 Repeater {
-                    model: peekCard.it?.windows ?? []
+                    model: floater.listMode ? (floater.it?.windows ?? []) : []
                     Rectangle {
                         id: row
                         required property var modelData
                         required property int index
                         readonly property bool on: modelData.is_focused
-                        width: peekCol.width
+                        width: listCol.width
                         height: 52
                         radius: Shape.medium
                         color: on ? Colors.m3secondaryContainer : "transparent"
-                        SpringValue { id: rowIn; target: peek.item ? 1 : 0; damping: 0.7; stiffness: 480 - row.index * 50 }
-                        opacity: Math.max(0, Math.min(1, rowIn.value))
-                        transform: Translate { y: (1 - rowIn.value) * 8 }
                         StateLayer {
                             radius: row.radius
-                            onClicked: { Niri.action("focus-window", "--id", String(row.modelData.id)); peek.item = null; }
+                            onContainsMouseChanged: hover.bump(containsMouse ? 1 : -1)
+                            onClicked: { Compositor.action("focus-window", "--id", String(row.modelData.id)); hover.slot = null; }
                         }
-                        IconImage {
+                        AppIcon {
                             x: 12
                             anchors.verticalCenter: parent.verticalCenter
                             width: 24; height: 24
-                            source: Quickshell.iconPath(peekCard.it?.own?.icon ?? peekCard.it?.entry?.icon ?? Apps.iconFor(row.modelData.app_id), "application-x-executable")
+                            source: floater.it?.own ? floater.it.own.icon : Apps.iconSourceFor(row.modelData.app_id, row.modelData.title)
                         }
                         Column {
                             x: 48
@@ -408,7 +500,8 @@ Variants {
                             anchors.verticalCenter: parent.verticalCenter
                             size: 36; iconSize: 18
                             icon: "close"
-                            onClicked: Niri.action("close-window", "--id", String(row.modelData.id))
+                            onHoveredChanged: hover.bump(hovered ? 1 : -1)
+                            onClicked: Compositor.action("close-window", "--id", String(row.modelData.id))
                         }
                     }
                 }
@@ -416,50 +509,115 @@ Variants {
         }
 
         QtObject {
-            id: menu
+            id: dockMenu
             property Item item: null
-            function open(slot) { item = slot; menuIn.target = 1; }
-            function close() { menuIn.target = 0; }
+            property Item shown: null
+            property real anchorX: 0
+            property real anchorY: 0
+            function open(slot) {
+                anchorX = dock.x + slot.x + slot.width / 2;
+                anchorY = dock.y + slot.y;
+                hover.slot = null;
+                hover.icon = false;
+                hover.menuIcon = true;
+                hover.menu = false;
+                hover.menuGap = false;
+                hover.menuRows = 0;
+                shown = slot;
+                item = slot;
+                menuSpring.value = 0;
+                menuSpring.velocity = 0;
+                menuSpring.running = true;
+                menuLeave.stop();
+            }
+            function close() {
+                item = null;
+                hover.menu = false;
+                hover.menuIcon = false;
+                hover.menuGap = false;
+                hover.menuRows = 0;
+                menuLeave.stop();
+                if (!dockHover.hovered && !edgeHover.hovered) {
+                    leave.stop();
+                    win.pointerIn = false;
+                }
+            }
         }
-        SpringValue { id: menuIn; target: 0; damping: 0.7; stiffness: 520; onRunningChanged: if (!running && target === 0) menu.item = null }
-        MouseArea {
-            anchors.fill: parent
-            enabled: menu.item !== null
-            acceptedButtons: Qt.AllButtons
-            onClicked: menu.close()
+        Timer {
+            id: menuLeave
+            interval: 140
+            onTriggered: if (dockMenu.item && !hover.menu && !hover.menuIcon && !hover.menuGap && hover.menuRows === 0) dockMenu.close()
+        }
+        Item {
+            id: menuBridge
+            x: menuCard.x - 14
+            y: menuCard.y - 12
+            width: menuCard.width + 28
+            height: Math.max(menuCard.height + 24, dock.y + (dockMenu.shown?.y ?? 0) + 8 - y)
+            HoverHandler { onHoveredChanged: { hover.menuGap = hovered; hover.syncMenu(); } }
         }
         Rectangle {
             id: menuCard
-            visible: menu.item !== null
-            readonly property var it: menu.item?.it ?? null
+            function perform(key) {
+                const target = it;
+                win.closeMenu();
+                if (!target) return;
+                if (key === "pin") win.togglePin(target);
+                else if (key === "new" && target.entry) Apps.launch(target.entry);
+                else if (key === "close") win.closeAll(target);
+            }
+            visible: menuSpring.value > 0.02 && dockMenu.shown !== null
+            readonly property var it: dockMenu.shown?.it ?? null
             width: 220
             height: menuCol.implicitHeight + 16
             radius: Shape.large
             color: Colors.m3surfaceContainerHigh
-            x: menu.item ? Math.max(8, Math.min(win.width - width - 8, dock.x + menu.item.x + menu.item.width / 2 - width / 2)) : 0
-            y: dock.y - height - 12
-            opacity: Math.min(1, menuIn.value * 1.4)
-            scale: 0.85 + 0.15 * menuIn.value
+            x: dockMenu.shown ? Math.max(8, Math.min(win.width - width - 8, dockMenu.anchorX - width / 2)) : 0
+            y: dockMenu.anchorY - height - 10
+            opacity: Math.min(1, menuSpring.value)
+            scale: 0.8 + 0.2 * menuSpring.value
             transformOrigin: Item.Bottom
+            SpringValue { id: menuSpring; target: dockMenu.item !== null ? 1 : 0; damping: 0.7; stiffness: 520; epsilon: 0.01 }
+            Connections {
+                target: menuSpring
+                function onValueChanged() { if (menuSpring.value < 0.02 && dockMenu.item === null) dockMenu.shown = null; }
+            }
+            HoverHandler { onHoveredChanged: { hover.menu = hovered; hover.syncMenu(); } }
 
             Column {
                 id: menuCol
                 x: 8; y: 8
                 width: parent.width - 16
-                MText { leftPadding: 12; topPadding: 4; bottomPadding: 6; textStyle: Type.labelLargeEmph; color: Colors.m3primary; text: menuCard.it?.own?.name ?? menuCard.it?.entry?.name ?? Apps.nameFor(menuCard.it?.appId) }
+                MText { width: parent.width - 12; elide: Text.ElideRight; leftPadding: 12; topPadding: 4; bottomPadding: 6; textStyle: Type.labelLargeEmph; color: Colors.m3primary; text: menuCard.it?.own?.name ?? menuCard.it?.entry?.name ?? Apps.nameFor(menuCard.it?.appId) }
                 Repeater {
                     model: menuCard.it ? [
-                        { icon: menuCard.it.pinned ? "keep_off" : "keep", label: menuCard.it.pinned ? "Открепить" : "Закрепить", act: () => win.togglePin(menuCard.it) },
-                        { icon: "add", label: "Новое окно", act: () => { if (menuCard.it.entry) Apps.launch(menuCard.it.entry); }, show: !!menuCard.it.entry },
-                        { icon: "close", label: menuCard.it.windows.length > 1 ? "Закрыть все окна" : "Закрыть", act: () => win.closeAll(menuCard.it), show: menuCard.it.windows.length > 0 }
+                        { key: "pin", icon: win.pinned.indexOf(menuCard.it.key) >= 0 ? "keep_off" : "keep", label: win.pinned.indexOf(menuCard.it.key) >= 0 ? "Открепить" : "Закрепить", show: !!menuCard.it.entry || !!menuCard.it.own },
+                        { key: "new", icon: "add", label: "Новое окно", show: !!menuCard.it.entry },
+                        { key: "close", icon: "close", label: menuCard.it.windows.length > 1 ? "Закрыть все окна" : "Закрыть", show: menuCard.it.windows.length > 0 }
                     ].filter(a => a.show !== false) : []
                     Item {
+                        id: actionRow
                         required property var modelData
                         width: menuCol.width
                         height: 44
-                        StateLayer { radius: Shape.medium; onClicked: { parent.modelData.act(); menu.close(); } }
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Shape.medium
+                            color: actionMouse.containsMouse ? Colors.m3surfaceContainerHighest : "transparent"
+                        }
                         MIcon { x: 12; anchors.verticalCenter: parent.verticalCenter; icon: parent.modelData.icon; size: 20; color: Colors.m3onSurfaceVariant }
                         MText { x: 44; anchors.verticalCenter: parent.verticalCenter; textStyle: Type.labelLarge; text: parent.modelData.label }
+                        MouseArea {
+                            id: actionMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onContainsMouseChanged: {
+                                hover.menuRows = Math.max(0, hover.menuRows + (containsMouse ? 1 : -1));
+                                hover.syncMenu();
+                            }
+                            onClicked: menuCard.perform(actionRow.modelData.key)
+                        }
                     }
                 }
             }

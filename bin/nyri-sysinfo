@@ -60,11 +60,17 @@ info["disks"] = disks
 
 outs = []
 try:
-    for name, o in json.loads(run("niri", "msg", "-j", "outputs") or "{}").items():
-        mode = (o.get("modes") or [{}])[o.get("current_mode") or 0] if o.get("current_mode") is not None else {}
-        outs.append({"name": name, "make": " ".join(x for x in (o.get("make"), o.get("model")) if x),
-                     "w": mode.get("width", 0), "h": mode.get("height", 0),
-                     "hz": round(mode.get("refresh_rate", 0) / 1000), "scale": (o.get("logical") or {}).get("scale", 1)})
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        for o in json.loads(run("hyprctl", "-j", "monitors") or "[]"):
+            outs.append({"name": o.get("name", ""), "make": " ".join(x for x in (o.get("make"), o.get("model")) if x),
+                         "w": o.get("width", 0), "h": o.get("height", 0),
+                         "hz": round(o.get("refreshRate", 0)), "scale": o.get("scale", 1)})
+    else:
+        for name, o in json.loads(run("niri", "msg", "-j", "outputs") or "{}").items():
+            mode = (o.get("modes") or [{}])[o.get("current_mode") or 0] if o.get("current_mode") is not None else {}
+            outs.append({"name": name, "make": " ".join(x for x in (o.get("make"), o.get("model")) if x),
+                         "w": mode.get("width", 0), "h": mode.get("height", 0),
+                         "hz": round(mode.get("refresh_rate", 0) / 1000), "scale": (o.get("logical") or {}).get("scale", 1)})
 except Exception:
     pass
 info["outputs"] = outs
@@ -87,7 +93,8 @@ if bat:
         "tech": read(bat / "technology"), "maker": read(bat / "manufacturer"),
     }
 
-info["niri"] = run("niri", "--version")
+info["compositor"] = run("Hyprland", "--version").splitlines()[0] if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") else run("niri", "--version")
+info["niri"] = info["compositor"]
 info["quickshell"] = run("qs", "--version").splitlines()[0] if run("qs", "--version") else ""
 info["packages"] = len(run("pacman", "-Qq").splitlines()) if shutil.which("pacman") else 0
 root = Path(os.environ.get("NYRI_ROOT", Path.home() / "nyri"))

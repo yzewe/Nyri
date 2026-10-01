@@ -16,11 +16,11 @@ Island {
 
     padding: has ? 6 : 0
     spacing: 8
+    widthSpeed: loud ? "fast" : "default"
     color: loud ? Colors.m3errorContainer : Colors.m3surfaceContainer
     readonly property bool present: grow.value > 0.02
     visible: present
     opacity: Math.min(1, grow.value * 1.5) * Math.min(1, intro * 2)
-    scale: 0.6 + 0.4 * Math.min(1, grow.value)
     SpringValue { id: grow; target: root.has ? 1 : 0; damping: 0.62; stiffness: 420 }
 
     property real now: Date.now()
@@ -92,10 +92,18 @@ Island {
             visible: root.main?.kind === "media" && cover.status === Image.Ready
             Image {
                 id: cover
-                anchors.fill: parent
-                source: root.main?.kind === "media" ? root.main.cover : ""
+                anchors.centerIn: parent
+                width: parent.width + 2
+                height: parent.height + 2
+                source: root.main?.kind === "media" ? (root.main.cover || Media.art) : ""
                 fillMode: Image.PreserveAspectCrop
-                sourceSize: Qt.size(56, 56)
+                smooth: true
+                mipmap: true
+                asynchronous: true
+                layer.enabled: true
+                layer.smooth: true
+                layer.textureSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio * 2), Math.ceil(height * Screen.devicePixelRatio * 2))
+                transformOrigin: Item.Center
                 RotationAnimation on rotation {
                     running: art.visible && root.visible
                     from: 0; to: 360; duration: 8000; loops: Animation.Infinite
@@ -110,6 +118,7 @@ Island {
         width: implicitWidth
         elide: Text.ElideRight
         textStyle: Type.labelLargeEmph
+        animate: root.main?.kind !== "mic" && root.main?.kind !== "camera" && !root.loud
         color: root.loud ? Colors.m3onErrorContainer : Colors.m3onSurface
         text: root.main?.title ?? ""
     }

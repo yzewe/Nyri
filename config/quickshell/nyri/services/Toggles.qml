@@ -41,8 +41,7 @@ Singleton {
 
     readonly property bool dark: Colors.mode !== "light"
     function setMode(mode) {
-        if (Config.o.theme.walls) Quickshell.execDetached([Paths.bin + "/nyri-wall", "variant", mode]);
-        else Quickshell.execDetached(["env", "NYRI_MODE=" + mode, Paths.bin + "/nyri-theme"]);
+        Quickshell.execDetached(["env", "NYRI_MODE=" + mode, Paths.bin + "/nyri-theme"]);
     }
     function toggleDark() { setMode(dark ? "light" : "dark"); }
 }

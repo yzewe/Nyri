@@ -57,10 +57,13 @@ Singleton {
         if (l && l.t >= 0 && player?.canSeek) { player.position = l.t; basePos = l.t; baseAt = Date.now(); }
     }
 
+    property bool queued: false
     onKeyChanged: maybeFetch()
-    onWantedChanged: maybeFetch()
+    Component.onCompleted: maybeFetch()
     function maybeFetch() {
-        if (wanted <= 0 || !title || cache[key] || fetch.running) return;
+        if (!title || cache[key]) { queued = false; return; }
+        if (fetch.running) { queued = true; return; }
+        queued = false;
         const q = s => encodeURIComponent(s);
         let url = "https://lrclib.net/api/get?track_name=" + q(title) + "&artist_name=" + q(artist);
         if (album) url += "&album_name=" + q(album);
@@ -101,6 +104,7 @@ Singleton {
         property string asked: ""
         property bool search: false
         property int tries: 0
+        onRunningChanged: if (!running && root.queued) Qt.callLater(root.maybeFetch)
         stdout: StdioCollector {
             onStreamFinished: {
                 let data = null;
@@ -128,6 +132,7 @@ Singleton {
                 const next = Object.assign({}, root.cache);
                 next[fetch.asked] = got ?? { synced: [], plain: [], none: true };
                 root.cache = next;
+                if (root.queued || root.key !== fetch.asked) Qt.callLater(root.maybeFetch);
             }
         }
     }
